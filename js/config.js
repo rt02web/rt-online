@@ -1,7 +1,7 @@
 /**
  * KONFIGURASI RT ONLINE
  * ------------------------------------------------------------
- * WAJIB DIISI sebelum di-upload ke GitHub Pages:
+ * Sudah diisi dengan URL Web App RT ONLINE Anda (dari config.js lama).
  * tempel URL Web App Google Apps Script (berakhiran /exec).
  */
 window.RT_CONFIG = {
@@ -10,7 +10,7 @@ window.RT_CONFIG = {
   // Cadangan gambar bila logo/foto gerbang belum diunggah lewat menu Administrator.
   // Letakkan berkasnya di folder assets/ dengan nama berikut (opsional).
   LOGO_LOKAL: 'assets/logo.png',
-  GERBANG_LOKAL: 'assets/gerbang.jpg',
+  GERBANG_LOKAL: ['assets/gerbang.png', 'assets/gerbang.jpg'],
 
   // Pustaka pembaca/penulis Excel (dimuat hanya saat impor/ekspor)
   SHEETJS_URL: 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'

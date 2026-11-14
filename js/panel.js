@@ -52,6 +52,7 @@ function dashWarga(el, d) {
     <div class="stack">
       <div class="card"><div class="card-h"><h3>${ikon('receipt')} Tagihan belum lunas</h3><a class="btn btn-primary btn-sm" href="#/panel/tagihan-saya">${ikon('upload', 'sm')} Bayar / unggah bukti</a></div>
         ${k.tagihanTerbuka.length ? k.tagihanTerbuka.slice(0, 5).map(t => `<div class="list-item"><div class="grow"><div class="ttl">${esc(t.label)}</div><div class="small muted">${esc(t.kasLabel)}${t.jatuhTempo ? ' · jatuh tempo ' + esc(tgl(t.jatuhTempo, true)) : ''}</div></div><div class="right"><div class="mono">${rp(t.sisa)}</div>${badge(t.status)}</div></div>`).join('') : `<div class="alert ok">${ikon('check')}<div>Semua tagihan sudah lunas. Terima kasih!</div></div>`}</div>
+      ${d.kasUmum ? kartuKasUmumWarga(d.kasUmum) : ''}
       <div class="card"><div class="card-h"><h3>${ikon('megaphone')} Pengumuman terbaru</h3><a href="#/panel/info">Semua ${ikon('right', 'sm')}</a></div>
         ${d.pengumuman.length ? d.pengumuman.map(p => `<div class="list-item" style="cursor:pointer" onclick='bacaPengumuman(${JSON.stringify(p).replace(/'/g, "&#39;")})'><div class="grow"><div class="row gap-sm">${badge(p.prioritas)}${p.audiens === 'Khusus Warga' ? '<span class="badge">Khusus Warga</span>' : ''}</div><div class="ttl mt-1">${esc(p.judul)}</div><div class="small muted">${esc(tglJam(p.tanggal))}</div></div>${ikon('right')}</div>`).join('') : kosong('Belum ada pengumuman.', 'megaphone')}</div>
     </div>
@@ -65,6 +66,17 @@ function dashWarga(el, d) {
         <a class="btn btn-outline" href="#/panel/keluarga">${ikon('users')} Data keluarga</a><a class="btn btn-outline" href="#/panel/akun">${ikon('key')} Ganti password</a></div></div>
     </div>
   </div>`;
+  tipGrafik(el);
+}
+
+/** Transparansi Kas Umum untuk warga: saldo awal, pemasukan, pengeluaran, saldo akhir + grafik 6 bulan */
+function kartuKasUmumWarga(k) {
+  const kpi = (l, v, cls) => `<div class="card" style="box-shadow:none;padding:14px"><div class="xs muted" style="font-weight:600;text-transform:uppercase;letter-spacing:.04em">${l}</div><div class="mono mt-1" style="font-size:19px;font-weight:600;${cls || ''}">${v}</div></div>`;
+  return `<div class="card"><div class="card-h"><div><h3>${ikon('bank')} Kas Umum RT</h3><div class="sub">Periode ${esc(periodeLabel(k.periode))} · transaksi terkonfirmasi</div></div><span class="badge info">Transparansi</span></div>
+    <div class="grid kas-mini" style="gap:.6rem">${kpi('Saldo awal', rp(k.saldoAwal))}${kpi('Pemasukan', '+' + rp(k.pemasukan), 'color:var(--green-deep)')}${kpi('Pengeluaran', '−' + rp(k.pengeluaran), 'color:var(--danger)')}${kpi('Saldo akhir', rp(k.saldoAkhir), 'color:var(--navy)')}</div>
+    <div class="mt-2">${k.tren.some(b => b.masuk || b.keluar) ? grafikBatang(k.tren.map(b => ({ label: b.label, a: b.masuk, b: b.keluar })), 'Pemasukan', 'Pengeluaran') : kosong('Belum ada transaksi Kas Umum dalam 6 bulan terakhir.', 'chart')}</div>
+    <details class="mt-1 small"><summary style="cursor:pointer">Tampilkan tabel 6 bulan</summary><div class="table-wrap"><table class="tbl mt-1"><thead><tr><th>Bulan</th><th class="right">Saldo awal</th><th class="right">Masuk</th><th class="right">Keluar</th><th class="right">Saldo akhir</th></tr></thead><tbody>
+      ${k.tren.map(b => `<tr><td>${esc(periodeLabel(b.periode))}</td><td class="money">${rp(b.saldoAwal)}</td><td class="money plus">${rp(b.masuk)}</td><td class="money minus">${rp(b.keluar)}</td><td class="money">${rp(b.saldoAkhir)}</td></tr>`).join('')}</tbody></table></div></details></div>`;
 }
 
 function dashAdmin(el, d) {
@@ -87,6 +99,7 @@ function dashAdmin(el, d) {
       <div class="card"><div class="card-h"><h3>${ikon('wa')} WhatsApp</h3>${badge(s.tokenFonnte ? 'Aktif' : 'NONAKTIF', s.tokenFonnte ? 'Token tersimpan' : 'Belum ada token')}</div>
         <dl class="kv"><dt>Antrean</dt><dd>${s.antreanWA} pesan</dd><dt>Gagal</dt><dd>${s.waGagal} pesan</dd></dl><a class="btn btn-outline btn-block mt-2" href="#/panel/fonnte">Buka integrasi Fonnte</a></div>
       <div class="card"><h3 class="mb-1" style="font-size:17px">Pintasan</h3><div class="stack" style="--g:.5rem">
+        <a class="btn btn-outline btn-block" href="#/panel/identitas">${ikon('image')} Ganti logo & foto latar perumahan</a>
         <a class="btn btn-outline btn-block" href="#/panel/identitas">${ikon('building')} Identitas & pengurus</a>
         <a class="btn btn-outline btn-block" href="#/panel/pengaturan">${ikon('sliders')} Nominal & pengaturan</a>
         <a class="btn btn-outline btn-block" href="#/panel/perubahan">${ikon('edit')} Perubahan data warga</a></div></div>

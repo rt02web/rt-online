@@ -299,9 +299,10 @@ function logoSvg() {
   d.innerHTML = '<svg viewBox="0 0 64 64" width="100%" height="100%" role="img" aria-label="RT02"><rect width="64" height="64" rx="12" fill="#033A65"/><path d="M14 32 32 18l18 14v16H14z" fill="#fff"/><rect x="28" y="36" width="8" height="12" fill="#84C534"/><text x="32" y="60" font-size="9" font-weight="700" fill="#84C534" text-anchor="middle" font-family="Inter,Arial">RT02</text></svg>';
   return d.firstChild;
 }
+/** Foto latar perumahan berlapis: bila unggahan Drive gagal dimuat, otomatis memakai assets/gerbang.png / .jpg */
 function bgGerbang() {
-  const u = Identitas.gerbang;
-  return `<div class="bgimg" style="background-image:url('${esc(u)}')"></div>`;
+  const u = Identitas.latar.map(x => `url('${esc(x)}')`).join(', ');
+  return `<div class="bgimg" style="background-image:${u}"></div>`;
 }
 
 // ---------------- Grafik sederhana (SVG, dengan tooltip) ----------------

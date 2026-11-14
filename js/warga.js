@@ -187,16 +187,19 @@ daftarHalaman('keluarga', {
   render: async el => {
     const [det, prb] = await Promise.all([api('detailRumah'), api('listPerubahan')]);
     const r = det.rumah;
-    window._agg = det.anggota;
+    window._agg = det.anggota; window._rumahSaya = r;
     el.innerHTML = kepala('Data Keluarga', 'Perubahan data berlaku setelah disetujui Administrator. Riwayat pembayaran rumah tidak terpengaruh.', `<button class="btn btn-primary" id="kl-tambah">${ikon('plus')} Ajukan tambah anggota</button>`) + `
     <div class="split"><div class="card flush"><div class="card-h"><h3>${ikon('users')} Anggota keluarga</h3><span class="badge">${det.anggota.filter(a => a.aktif).length} aktif</span></div>
       <div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Nama</th><th>Hubungan</th><th>Tgl lahir</th><th>No. HP</th><th></th></tr></thead><tbody>
       ${det.anggota.filter(a => a.aktif).map((a, i) => `<tr><td data-l="Nama"><b>${esc(a.nama)}</b> <span class="sub">${a.jk || ''}</span></td><td data-l="Hubungan">${esc(a.hubungan)}</td><td data-l="Tgl lahir">${esc(tgl(a.tglLahir, true))}</td><td data-l="No. HP" class="mono">${esc(a.hp || '-')}</td>
         <td data-l=""><button class="btn btn-ghost btn-sm" onclick="ajukanUbahAnggota(${det.anggota.indexOf(a)})">${ikon('edit', 'sm')} Ubah</button><button class="btn btn-ghost btn-sm" onclick="ajukanNonaktif('${a.id}','${esc(a.nama)}')">${ikon('trash', 'sm')}</button></td></tr>`).join('') || `<tr><td colspan="5">${kosong('Belum ada data anggota keluarga.', 'users')}</td></tr>`}</tbody></table></div></div>
-      <div class="stack"><div class="card"><div class="card-h"><h3>${ikon('home')} Rumah</h3></div><dl class="kv"><dt>Alamat</dt><dd>Blok ${esc(r.blok)} No. ${esc(r.no)}</dd><dt>Kepala keluarga</dt><dd>${esc(r.kepala || '-')}</dd><dt>Status</dt><dd>${badge(r.statusRumah)}</dd><dt>WA penerima notifikasi</dt><dd class="mono">${esc(r.wa || '-')}</dd></dl>
-        <button class="btn btn-outline btn-block mt-2" id="kl-wa">${ikon('wa')} Ajukan ganti nomor WA</button></div>
-        <div class="card"><div class="card-h"><h3>${ikon('history')} Status pengajuan</h3></div>${prb.length ? prb.slice(0, 8).map(p => `<div class="list-item"><div class="grow"><div class="ttl">${esc({ tambah: 'Tambah anggota', ubah: 'Ubah data', nonaktif: 'Nonaktifkan', kontak: 'Ganti nomor WA' }[p.jenis])}</div><div class="small muted">${esc(p.data.Nama || p.anggota || p.data.WA_Penerima || '')} · ${esc(tgl(p.tanggal, true))}</div>${p.alasan ? `<div class="small err">${esc(p.alasan)}</div>` : ''}</div>${badge(p.status)}</div>`).join('') : kosong('Belum ada pengajuan.')}</div></div></div>`;
+      <div class="stack"><div class="card"><div class="card-h"><h3>${ikon('home')} Rumah</h3></div><dl class="kv"><dt>Alamat</dt><dd>Blok ${esc(r.blok)} No. ${esc(r.no)}</dd><dt>Kepala keluarga</dt><dd>${esc(r.kepala || '-')}</dd>
+          <dt>Status hunian</dt><dd>${badgeHunian(r.statusRumah)}</dd>${r.statusRumah === 'Dikontrak' ? `<dt>Pemilik rumah</dt><dd>${esc(r.pemilik || '— belum diisi —')}</dd>${r.waPemilik ? `<dt>WA pemilik</dt><dd class="mono">${esc(r.waPemilik)}</dd>` : ''}` : ''}
+          <dt>WA penerima notifikasi</dt><dd class="mono">${esc(r.wa || '-')}</dd></dl>
+        <div class="grid g-2 mt-2" style="gap:.5rem"><button class="btn btn-outline" id="kl-hunian">${ikon('key')} Ubah status hunian</button><button class="btn btn-outline" id="kl-wa">${ikon('wa')} Ganti nomor WA</button></div></div>
+        <div class="card"><div class="card-h"><h3>${ikon('history')} Status pengajuan</h3></div>${prb.length ? prb.slice(0, 8).map(p => `<div class="list-item"><div class="grow"><div class="ttl">${esc({ tambah: 'Tambah anggota', ubah: 'Ubah data', nonaktif: 'Nonaktifkan', kontak: 'Ganti nomor WA', hunian: 'Ubah status hunian' }[p.jenis])}</div><div class="small muted">${esc(p.data.Nama || p.anggota || p.data.WA_Penerima || (p.data.Status_Rumah ? (LABEL_HUNIAN[p.data.Status_Rumah] || p.data.Status_Rumah) + (p.data.Pemilik_Rumah ? ' · ' + p.data.Pemilik_Rumah : '') : ''))} · ${esc(tgl(p.tanggal, true))}</div>${p.alasan ? `<div class="small err">${esc(p.alasan)}</div>` : ''}</div>${badge(p.status)}</div>`).join('') : kosong('Belum ada pengajuan.')}</div></div></div>`;
     $('#kl-tambah').onclick = () => formPerubahan('tambah', null, {});
+    $('#kl-hunian').onclick = () => formHunian(r);
     $('#kl-wa').onclick = async () => { const v = await mintaTeks('Ganti Nomor WhatsApp', 'Nomor WA baru penerima notifikasi rumah', { placeholder: '08xxxxxxxxxx', ya: 'Ajukan' }); if (v) try { const r = await api('ajukanPerubahan', { jenis: 'kontak', data: { WA_Penerima: v } }); toast(r.pesan); router(); } catch (e) { gagal(e); } };
   }
 });
@@ -206,8 +209,42 @@ async function ajukanNonaktif(id, nama) {
   if (alasan === null) return;
   try { const r = await api('ajukanPerubahan', { jenis: 'nonaktif', ID_Anggota: id, data: { alasan } }); toast(r.pesan); router(); } catch (e) { gagal(e); }
 }
-function formPerubahan(jenis, idAnggota, a) {
-  const m = modal({ judul: jenis === 'tambah' ? 'Ajukan Tambah Anggota' : 'Ajukan Ubah Data ' + a.nama, ikonJudul: 'users', isi: `<form id="pa-f">${formHTML(fieldsAnggota(a))}</form>`, kaki: `<button class="btn btn-outline" data-x>Batal</button><button class="btn btn-primary" id="pa-ok">${ikon('send')} Ajukan</button>` });
+function fieldsHunian(r = {}) {
+  return [
+    { n: 'Status_Rumah', l: 'Status hunian keluarga', t: 'select', o: OPSI_HUNIAN.filter(o => o[0] !== 'Kosong'), v: r.statusRumah === 'Dikontrak' ? 'Dikontrak' : 'Dihuni', full: true },
+    { n: 'Pemilik_Rumah', l: 'Nama pemilik rumah (bila kontrak)', v: r.pemilik },
+    { n: 'WA_Pemilik', l: 'WA pemilik rumah (opsional)', t: 'tel', v: r.waPemilik, ph: '08xxxxxxxxxx' }
+  ];
+}
+function aturHunian(f) {
+  const atur = () => { const k = $('[name=Status_Rumah]', f).value === 'Dikontrak'; ['Pemilik_Rumah', 'WA_Pemilik'].forEach(n => $('[name=' + n + ']', f).closest('.field').classList.toggle('hidden', !k)); };
+  $('[name=Status_Rumah]', f).onchange = atur; atur();
+}
+function formHunian(r) {
+  const m = modal({ judul: 'Ajukan Ubah Status Hunian', ikonJudul: 'home', isi: `<p class="muted small">Pilih apakah keluarga Anda <b>pemilik rumah</b> atau <b>mengontrak/menyewa</b>. Perubahan berlaku setelah disetujui Administrator.</p><form id="hn-f">${formHTML(fieldsHunian(r))}</form>`, kaki: `<button class="btn btn-outline" data-x>Batal</button><button class="btn btn-primary" id="hn-ok">${ikon('send')} Ajukan</button>` });
+  const f = $('#hn-f', m.el); aturHunian(f);
   $('[data-x]', m.el).onclick = m.tutup;
-  $('#pa-ok', m.el).onclick = () => { const f = $('#pa-f', m.el); if (!validasiForm(f)) return; sibuk($('#pa-ok', m.el), async () => { try { const d = await bacaForm(f); const r = await api('ajukanPerubahan', { jenis, ID_Anggota: idAnggota, data: d }); m.tutup(); toast(r.pesan); router(); } catch (e) { gagal(e); } }); };
+  $('#hn-ok', m.el).onclick = () => sibuk($('#hn-ok', m.el), async () => {
+    try { const d = await bacaForm(f); if (d.Status_Rumah === 'Dikontrak' && !d.Pemilik_Rumah) throw new Error('Isi nama pemilik rumah.'); const x = await api('ajukanPerubahan', { jenis: 'hunian', data: d }); m.tutup(); toast(x.pesan); router(); } catch (e) { gagal(e); }
+  });
+}
+function formPerubahan(jenis, idAnggota, a) {
+  const rs = window._rumahSaya || {};
+  const tambahan = jenis === 'tambah' ? `<h4 class="mt-3 mb-1">Status hunian keluarga</h4><div class="small muted mb-1">Saat ini: <b>${esc(LABEL_HUNIAN[rs.statusRumah] || '-')}</b>. Ubah bila tidak sesuai.</div>${formHTML(fieldsHunian(rs))}` : '';
+  const m = modal({ judul: jenis === 'tambah' ? 'Ajukan Tambah Anggota' : 'Ajukan Ubah Data ' + a.nama, ikonJudul: 'users', isi: `<form id="pa-f">${formHTML(fieldsAnggota(a))}${tambahan}</form>`, kaki: `<button class="btn btn-outline" data-x>Batal</button><button class="btn btn-primary" id="pa-ok">${ikon('send')} Ajukan</button>` });
+  const f = $('#pa-f', m.el);
+  if (jenis === 'tambah') aturHunian(f);
+  $('[data-x]', m.el).onclick = m.tutup;
+  $('#pa-ok', m.el).onclick = () => { if (!validasiForm(f)) return; sibuk($('#pa-ok', m.el), async () => {
+    try {
+      const d = await bacaForm(f);
+      const hunian = { Status_Rumah: d.Status_Rumah, Pemilik_Rumah: d.Pemilik_Rumah, WA_Pemilik: d.WA_Pemilik };
+      delete d.Status_Rumah; delete d.Pemilik_Rumah; delete d.WA_Pemilik;
+      const berubah = jenis === 'tambah' && hunian.Status_Rumah && (hunian.Status_Rumah !== (rs.statusRumah === 'Dikontrak' ? 'Dikontrak' : 'Dihuni') || (hunian.Status_Rumah === 'Dikontrak' && hunian.Pemilik_Rumah !== (rs.pemilik || '')));
+      if (berubah && hunian.Status_Rumah === 'Dikontrak' && !hunian.Pemilik_Rumah) throw new Error('Isi nama pemilik rumah untuk rumah kontrak.');
+      const r = await api('ajukanPerubahan', { jenis, ID_Anggota: idAnggota, data: d });
+      if (berubah) await api('ajukanPerubahan', { jenis: 'hunian', data: hunian });
+      m.tutup(); toast(r.pesan + (berubah ? ' Perubahan status hunian juga diajukan.' : '')); router();
+    } catch (e) { gagal(e); }
+  }); };
 }
