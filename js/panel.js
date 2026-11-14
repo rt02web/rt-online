@@ -13,7 +13,7 @@ function tabelTrx(rows, opsi = {}) {
   return `<div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Tanggal</th><th>Uraian</th>${opsi.kas ? '<th>Kas</th>' : ''}<th class="right">Nominal</th><th>Status</th>${opsi.aksi ? '<th></th>' : ''}</tr></thead><tbody>
     ${rows.map(t => {
       const kas = Sesi.user.kas;
-      const plus = t.jenis === 'masuk' || ((t.jenis === 'serah_terima' || t.jenis === 'alokasi') && kas && t.tujuan === kas);
+      const plus = t.jenis === 'masuk' || t.jenis === 'saldo_awal' || ((t.jenis === 'serah_terima' || t.jenis === 'alokasi') && kas && t.tujuan === kas);
       const st = t.jenis === 'serah_terima' || t.jenis === 'alokasi';
       return `<tr><td data-l="Tanggal" class="nowrap">${esc(tgl(t.tanggal, true))}<div class="sub mono">${esc(t.id)}</div></td>
       <td data-l="Uraian">${esc(t.uraian)}<div class="sub">${esc(t.kategori)}${st ? ' · ' + esc(LABEL_KAS[t.sumber] || t.sumber) + ' → ' + esc(LABEL_KAS[t.tujuan] || t.tujuan) : ''}</div></td>
@@ -82,6 +82,7 @@ function kartuKasUmumWarga(k) {
 function dashAdmin(el, d) {
   const s = d.statistik;
   el.innerHTML = kepala('Dashboard Administrator', 'Ringkasan data warga, akun, dan kesehatan integrasi WhatsApp.', `<a class="btn btn-outline" href="#/panel/impor">${ikon('upload')} Impor Excel</a><a class="btn btn-primary" href="#/panel/akun-kelola">${ikon('users')} Kelola akun</a>`) + `
+  ${s.migrasiError ? `<div class="alert err mb-2">${ikon('alert')}<div><b>Pembaruan struktur data tertunda.</b> ${esc(s.migrasiError)}<br><span class="small">Data Anda aman dan tidak diubah. Kembalikan urutan kolom pada tab tersebut seperti semula, lalu muat ulang halaman.</span></div></div>` : ''}
   ${!s.tokenFonnte ? `<div class="alert warn mb-2">${ikon('alert')}<div><b>Token Fonnte belum diatur.</b> Notifikasi WhatsApp akan tertahan di antrean. <a href="#/panel/fonnte">Atur sekarang</a></div></div>` : ''}
   ${s.rumahTanpaAkun ? `<div class="alert info mb-2">${ikon('info')}<div>${s.rumahTanpaAkun} rumah belum memiliki akun warga. <a href="#/panel/akun-kelola">Buat akun warga</a></div></div>` : ''}
   <div class="grid g-4">
@@ -102,7 +103,8 @@ function dashAdmin(el, d) {
         <a class="btn btn-outline btn-block" href="#/panel/identitas">${ikon('image')} Ganti logo & foto latar perumahan</a>
         <a class="btn btn-outline btn-block" href="#/panel/identitas">${ikon('building')} Identitas & pengurus</a>
         <a class="btn btn-outline btn-block" href="#/panel/pengaturan">${ikon('sliders')} Nominal & pengaturan</a>
-        <a class="btn btn-outline btn-block" href="#/panel/perubahan">${ikon('edit')} Perubahan data warga</a></div></div>
+        <a class="btn btn-outline btn-block" href="#/panel/perubahan">${ikon('edit')} Perubahan data warga</a>
+        <a class="btn btn-outline btn-block" href="#/panel/statistik-warga">${ikon('chart')} Statistik warga (balita, lansia, dll.)</a></div></div>
     </div>
   </div>`;
 }
@@ -119,6 +121,9 @@ function dashPengurus(el, d) {
     <div class="note">Bulan ini <span class="mono" style="color:var(--green-deep)">+${rp(k.masukBulanIni)}</span> / <span class="mono" style="color:var(--danger)">−${rp(k.keluarBulanIni)}</span></div>
     ${k.titipan ? `<div class="note">${ikon('clock', 'sm')} Titipan menunggu konfirmasi: ${rp(k.titipan)}</div>` : ''}${k.menungguVerifikasi ? `<div class="mt-1"><span class="badge proses">${k.menungguVerifikasi} bukti menunggu verifikasi</span></div>` : ''}</div>`).join('')}
     ${d.kas.length === 1 ? kpiCard('clock', 'Menunggu verifikasi', d.kas[0].menungguVerifikasi, '<a href="#/panel/verifikasi">Buka antrean</a>', 'y') + kpiCard('swap', 'Serah terima masuk', (d.serahTerimaMasuk || []).length, 'Perlu konfirmasi Anda', 'g') : ''}</div>`;
+  if (BENDAHARA.includes(u.peran) && d.kas.length === 1 && !d.kas[0].saldoAwal) {
+    html += `<div class="alert info mt-2">${ikon('info')}<div><b>Saldo awal ${esc(LABEL_KAS[u.kas])} belum diisi.</b> Masukkan uang kas yang sudah ada sebelum aplikasi dipakai agar saldo sesuai. <a href="#/panel/transaksi">Isi saldo awal</a></div></div>`;
+  }
 
   if (d.serahTerimaMasuk && d.serahTerimaMasuk.length) {
     html += `<div class="card mt-3"><div class="card-h"><h3>${ikon('swap')} Serah terima menunggu konfirmasi</h3></div>${d.serahTerimaMasuk.map(t => `<div class="list-item"><div class="grow"><div class="ttl">${esc(t.uraian)}</div><div class="small muted">Dari ${esc(LABEL_KAS[t.sumber])} · ${esc(tgl(t.tanggal))}</div></div><b class="mono">${rp(t.nominal)}</b>

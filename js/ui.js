@@ -86,6 +86,10 @@ function periodeLabel(p) { const m = String(p || '').match(/^(\d{4})-(\d{2})$/);
 function hariIni() { const d = new Date(Date.now() + (7 * 60 + new Date().getTimezoneOffset()) * 60000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function periodeIni() { return hariIni().substr(0, 7); }
 function tambahBulan(p, n) { const [y, m] = p.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+/** Umur dari YYYY-MM-DD → angka tahun (null bila kosong) */
+function umurTahun(s) { const p = parseTgl(s), t = parseTgl(hariIni()); if (!p || !t) return null; let u = t.y - p.y; if (t.m < p.m || (t.m === p.m && t.d < p.d)) u--; return u < 0 || u > 130 ? null : u; }
+/** Teks umur ramah: "34 th", bayi "7 bln" */
+function umurTeks(s) { const u = umurTahun(s); if (u === null) return '—'; if (u >= 1) return u + ' th'; const p = parseTgl(s), t = parseTgl(hariIni()); const b = (t.y - p.y) * 12 + t.m - p.m - (t.d < p.d ? 1 : 0); return Math.max(0, b) + ' bln'; }
 function inisial(n) { return String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase(); }
 function selisihHari(s) { const p = parseTgl(s); if (!p) return null; const a = new Date(p.y, p.m - 1, p.d), t = parseTgl(hariIni()), b = new Date(t.y, t.m - 1, t.d); return Math.round((a - b) / 864e5); }
 

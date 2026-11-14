@@ -28,75 +28,124 @@ function cetakHTML(html, judul) {
 }
 
 // ============================================================
-// TAGIHAN & BAYAR
+// TAGIHAN & BAYAR — alur 3 langkah: pilih tagihan → transfer → kirim bukti
 // ============================================================
 daftarHalaman('tagihan-saya', {
   judul: 'Tagihan & Pembayaran', ikon: 'receipt', menu: 'Tagihan & Bayar', pendek: 'Tagihan',
   render: async el => {
     const [semua, rk, set] = await Promise.all([api('listTagihan'), api('ringkasanRumah'), api('getPengaturan')]);
     const rek = set.nilai.REKENING_RT;
-    const terbuka = semua.filter(t => t.sisa > 0);
-    const pilih = new Set();
-    el.innerHTML = kepala('Tagihan & Pembayaran', 'Pilih tagihan yang ingin dibayar, transfer ke rekening RT, lalu unggah bukti. Pembayaran berlaku setelah diverifikasi bendahara.') + `
-    <div class="grid g-3">${kpiCard('receipt', 'Sisa tagihan', rp(rk.tunggakan), terbuka.length + ' tagihan', rk.tunggakan ? 'r' : 'g')}${kpiCard('wallet', 'Saldo di muka', rp(rk.saldoMuka), rk.saldoMukaPerKas.map(s => esc(s.label) + ' ' + rp(s.sisa)).join(' · ') || 'Tidak ada', 'g')}${kpiCard('clock', 'Menunggu verifikasi', rp(rk.menungguVerifikasi), 'Belum mengurangi tagihan', 'y')}</div>
-    ${rek ? `<div class="alert info mt-3">${ikon('bank')}<div>Rekening RT untuk transfer: <b class="mono">${esc(rek)}</b> <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText('${esc(rek)}').then(()=>toast('Disalin'))">${ikon('copy', 'sm')} Salin</button></div></div>` : ''}
-    <div class="card flush mt-3"><div class="card-h"><h3>${ikon('list')} Tagihan belum lunas</h3><span class="small muted">Satu pembayaran hanya untuk tagihan dari kas yang sama</span></div>
-      ${terbuka.length ? `<div class="table-wrap"><table class="tbl responsive"><thead><tr><th style="width:40px"></th><th>Tagihan</th><th>Kas</th><th>Jatuh tempo</th><th class="right">Nominal</th><th class="right">Sisa</th><th>Status</th></tr></thead><tbody>
-      ${terbuka.map(t => `<tr><td data-l=""><input type="checkbox" class="pt" data-id="${t.id}" data-kas="${t.kas}" data-sisa="${t.sisa}" style="width:22px;height:22px;accent-color:var(--navy)" aria-label="Pilih ${esc(t.label)}"></td><td data-l="Tagihan"><b>${esc(t.label)}</b></td><td data-l="Kas">${esc(t.kasLabel)}</td><td data-l="Jatuh tempo">${esc(tgl(t.jatuhTempo, true))}${selisihHari(t.jatuhTempo) < 0 ? ' <span class="badge danger">Lewat</span>' : ''}</td><td data-l="Nominal" class="money">${rp(t.nominal)}</td><td data-l="Sisa" class="money"><b>${rp(t.sisa)}</b></td><td data-l="Status">${badge(t.status)}</td></tr>`).join('')}
-      </tbody></table></div>
-      <div class="row between" style="padding:16px 20px;border-top:1px solid var(--border)"><div>Dipilih: <b id="tg-n">0</b> tagihan · <b class="mono" id="tg-tot">Rp0</b></div>
-        <div class="row"><button class="btn btn-outline" id="tg-saldo" disabled>${ikon('wallet')} Pakai saldo di muka</button><button class="btn btn-primary" id="tg-bayar" disabled>${ikon('upload')} Unggah bukti transfer</button></div></div>`
-        : `<div style="padding:0 20px 20px"><div class="alert ok">${ikon('check')}<div>Tidak ada tagihan terbuka. Anda tetap dapat menyetor di muka.</div></div></div>`}</div>
-    <div class="row mt-2"><button class="btn btn-ghost" id="tg-muka">${ikon('plus')} Setor di muka tanpa memilih tagihan</button></div>
-    <div class="card flush mt-3"><div class="card-h"><h3>${ikon('history')} Semua tagihan</h3></div><div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Tagihan</th><th>Kas</th><th class="right">Nominal</th><th class="right">Terbayar</th><th>Status</th></tr></thead><tbody>
-      ${semua.map(t => `<tr><td data-l="Tagihan">${esc(t.label)}</td><td data-l="Kas">${esc(t.kasLabel)}</td><td data-l="Nominal" class="money">${rp(t.nominal)}</td><td data-l="Terbayar" class="money">${rp(t.terbayar)}</td><td data-l="Status">${badge(t.status)}</td></tr>`).join('') || `<tr><td colspan="5">${kosong('Belum ada tagihan.')}</td></tr>`}</tbody></table></div></div>`;
+    const terbuka = semua.filter(t => t.sisa > 0).sort((a, b) => String(a.periode).localeCompare(String(b.periode)));
+    const perKas = {};
+    terbuka.forEach(t => (perKas[t.kas] = perKas[t.kas] || []).push(t));
+    const urutKas = Object.keys(perKas).sort((a, b) => (a === 'umum' ? -1 : b === 'umum' ? 1 : a.localeCompare(b)));
+    let kasAktif = urutKas[0] || '';
+    const pilih = new Set((perKas[kasAktif] || []).map(t => t.id)); // default: semua tagihan kas pertama terpilih
+    const telat = terbuka.filter(t => selisihHari(t.jatuhTempo) < 0).length;
+
+    el.innerHTML = kepala('Tagihan & Pembayaran', 'Bayar iuran dari HP dalam 3 langkah. Tagihan dianggap lunas setelah bukti dicek Bendahara.') + `
+    <div class="bayar-hero"><div>
+        <div class="lbl">Total belum dibayar</div><div class="big">${rp(rk.tunggakan)}</div>
+        <div class="chips"><span class="chip">${terbuka.length} tagihan</span>${telat ? `<span class="chip merah">${telat} lewat jatuh tempo</span>` : ''}${rk.menungguVerifikasi ? `<span class="chip">${ikon('clock', 'sm')} ${rp(rk.menungguVerifikasi)} sedang dicek bendahara</span>` : ''}${rk.saldoMuka ? `<span class="chip">${ikon('wallet', 'sm')} Saldo di muka ${rp(rk.saldoMuka)}</span>` : ''}</div></div>
+      ${terbuka.length ? `<a class="btn btn-accent" href="#tg-daftar" onclick="event.preventDefault();document.getElementById('tg-daftar').scrollIntoView({behavior:'smooth'})">${ikon('wallet')} Bayar sekarang</a>` : ''}</div>
+    <div class="langkah"><div class="on"><b class="n">1</b><span>Pilih tagihan</span></div><div><b class="n">2</b><span>Transfer ke rekening RT</span></div><div><b class="n">3</b><span>Kirim foto bukti</span></div></div>
+    <div id="tg-daftar">${terbuka.length ? urutKas.map(k => `<div class="card mb-2" data-kas="${k}"><div class="card-h"><div><h3>${ikon(k === 'umum' ? 'home' : k === 'pembangunan' ? 'hammer' : 'heart')} ${esc(LABEL_KAS[k])}</h3><div class="sub">${perKas[k].length} tagihan · ${rp(perKas[k].reduce((x, t) => x + t.sisa, 0))}</div></div><button class="btn btn-ghost btn-sm tg-semua" data-kas="${k}">Pilih semua</button></div>
+        ${perKas[k].map(t => { const h = selisihHari(t.jatuhTempo); return `<label class="tg-item" data-id="${t.id}"><input type="checkbox" class="pt" data-id="${t.id}" data-kas="${t.kas}" data-sisa="${t.sisa}">
+          <div class="grow"><div class="nm">${esc(t.label)}</div><div class="small muted">${t.jatuhTempo ? 'Jatuh tempo ' + esc(tgl(t.jatuhTempo, true)) : ''}${h !== null && h < 0 ? ' <span class="badge danger">Terlambat</span>' : h !== null && h <= 5 ? ' <span class="badge proses">Segera</span>' : ''}${t.status === 'Sebagian' ? ' · sudah dibayar ' + rp(t.terbayar) : ''}</div></div>
+          <div class="amt">${rp(t.sisa)}</div></label>`; }).join('')}</div>`).join('')
+        : `<div class="card"><div class="wiz-sukses"><div class="ok-ico">${ikon('check')}</div><h3>Semua tagihan sudah lunas</h3><p class="muted">Terima kasih sudah tertib membayar iuran.</p></div></div>`}</div>
+    ${terbuka.length ? `<div class="bayar-bar"><div><div class="small muted" id="tg-n">Belum ada tagihan dipilih</div><div class="tot" id="tg-tot">Rp0</div></div>
+      <div class="row"><button class="btn btn-outline hidden" id="tg-saldo">${ikon('wallet')} Pakai saldo di muka</button><button class="btn btn-primary" id="tg-bayar" disabled>Lanjut bayar ${ikon('right')}</button></div></div>` : ''}
+    <div class="grid g-2 mt-3">
+      <div class="card"><h3 style="font-size:16px" class="mb-1">${ikon('coins')} Bayar tunai?</h3><p class="small muted mb-0">Serahkan uang langsung ke Bendahara. Bendahara akan mencatatnya dan Anda menerima kuitansi digital.</p></div>
+      <div class="card"><h3 style="font-size:16px" class="mb-1">${ikon('plus')} Setor di muka</h3><p class="small muted">Titip uang untuk tagihan bulan berikutnya. Otomatis dipakai saat tagihan terbit.</p><button class="btn btn-outline btn-sm" id="tg-muka">${ikon('upload', 'sm')} Setor di muka</button></div></div>
+    <details class="card mt-3"><summary style="cursor:pointer;font-weight:600;color:var(--navy)">${ikon('history', 'sm')} Lihat semua tagihan (${semua.length})</summary><div class="table-wrap mt-2"><table class="tbl responsive"><thead><tr><th>Tagihan</th><th>Kas</th><th class="right">Nominal</th><th class="right">Terbayar</th><th>Status</th></tr></thead><tbody>
+      ${semua.map(t => `<tr><td data-l="Tagihan">${esc(t.label)}</td><td data-l="Kas">${esc(t.kasLabel)}</td><td data-l="Nominal" class="money">${rp(t.nominal)}</td><td data-l="Terbayar" class="money">${rp(t.terbayar)}</td><td data-l="Status">${badge(t.status)}</td></tr>`).join('') || `<tr><td colspan="5">${kosong('Belum ada tagihan.')}</td></tr>`}</tbody></table></div></details>`;
 
     const upd = () => {
-      const sel = $$('.pt:checked', el);
-      const kasSet = [...new Set(sel.map(c => c.dataset.kas))];
-      $$('.pt', el).forEach(c => { c.disabled = kasSet.length === 1 && c.dataset.kas !== kasSet[0]; });
-      pilih.clear(); sel.forEach(c => pilih.add(c.dataset.id));
-      const tot = sel.reduce((s, c) => s + Number(c.dataset.sisa), 0);
-      $('#tg-n').textContent = sel.length; $('#tg-tot').textContent = rp(tot);
+      $$('.pt', el).forEach(c => { c.checked = pilih.has(c.dataset.id); c.closest('.tg-item').classList.toggle('on', c.checked); });
+      const sel = terbuka.filter(t => pilih.has(t.id));
+      const tot = sel.reduce((x, t) => x + t.sisa, 0);
+      if (!$('#tg-n')) return { tot };
+      $('#tg-n').textContent = sel.length ? `${sel.length} tagihan dipilih · ${LABEL_KAS[kasAktif]}` : 'Belum ada tagihan dipilih';
+      $('#tg-tot').textContent = rp(tot);
       $('#tg-bayar').disabled = !sel.length;
-      const sm = kasSet.length === 1 ? (rk.saldoMukaPerKas.find(s => s.kas === kasSet[0]) || {}).sisa || 0 : 0;
-      $('#tg-saldo').disabled = !sm;
-      return { tot, kas: kasSet[0] };
+      const sm = sel.length ? ((rk.saldoMukaPerKas.find(x => x.kas === kasAktif) || {}).sisa || 0) : 0;
+      $('#tg-saldo').classList.toggle('hidden', !sm);
+      if (sm) $('#tg-saldo').innerHTML = `${ikon('wallet')} Pakai saldo di muka (${rp(sm)})`;
+      return { tot };
     };
-    $$('.pt', el).forEach(c => c.onchange = upd);
-    if ($('#tg-bayar')) $('#tg-bayar').onclick = () => { const s = upd(); formBayar([...pilih], s.tot, rek, s.kas); };
-    $('#tg-muka').onclick = () => formBayar([], 0, rek, 'umum');
+    $$('.pt', el).forEach(c => c.onchange = () => {
+      if (c.dataset.kas !== kasAktif) {
+        if (pilih.size) toast('Satu kali bayar hanya untuk satu kas. Pilihan ' + LABEL_KAS[kasAktif] + ' dibatalkan.', 'ok', 3500);
+        pilih.clear(); kasAktif = c.dataset.kas;
+      }
+      c.checked ? pilih.add(c.dataset.id) : pilih.delete(c.dataset.id);
+      upd();
+    });
+    $$('.tg-semua', el).forEach(b => b.onclick = () => {
+      const k = b.dataset.kas;
+      const semuaDipilih = k === kasAktif && perKas[k].every(t => pilih.has(t.id));
+      pilih.clear(); kasAktif = k;
+      if (!semuaDipilih) perKas[k].forEach(t => pilih.add(t.id));
+      upd();
+    });
+    if ($('#tg-bayar')) $('#tg-bayar').onclick = () => { const s = upd(); wizardBayar([...pilih], s.tot, rek, kasAktif, terbuka.filter(t => pilih.has(t.id))); };
+    $('#tg-muka').onclick = () => wizardBayar([], 0, rek, 'umum', []);
     if ($('#tg-saldo')) $('#tg-saldo').onclick = async () => {
-      if (!await konfirmasi('Gunakan saldo di muka untuk melunasi tagihan yang dipilih? Ini adalah persetujuan Anda atas alokasi manual.', { ya: 'Gunakan saldo' })) return;
+      if (!await konfirmasi('Gunakan saldo di muka untuk melunasi tagihan yang dipilih?', { ya: 'Gunakan saldo' })) return;
       try { const r = await api('pakaiSaldoMuka', { tagihan: [...pilih] }); toast(r.pesan); router(); } catch (e) { gagal(e); }
     };
+    upd();
   }
 });
 
-function formBayar(ids, total, rek, kas) {
-  const m = modal({ judul: 'Unggah Bukti Transfer', ikonJudul: 'upload', isi: `
-    ${ids.length ? `<div class="alert info mb-2">${ikon('info')}<div>${ids.length} tagihan dipilih, total <b>${rp(total)}</b>. Bila Anda transfer lebih, kelebihannya menjadi saldo di muka. Bila kurang, tagihan tercatat dibayar sebagian.</div></div>` : `<div class="alert info mb-2">${ikon('info')}<div>Setoran tanpa tagihan akan menjadi <b>saldo di muka</b> dan otomatis dipakai untuk tagihan berikutnya.</div></div>`}
-    ${rek ? `<p>Transfer ke: <b class="mono">${esc(rek)}</b></p>` : ''}
-    <form id="by-f" class="stack" novalidate>${formHTML([
-      { n: 'nominal', l: 'Nominal yang ditransfer (Rp)', t: 'number', v: total || '', req: true },
-      { n: 'tanggal', l: 'Tanggal transfer', t: 'date', v: hariIni(), req: true },
-      ...(ids.length ? [] : [{ n: 'kas', l: 'Untuk kas', t: 'select', o: [['umum', 'Kas Umum'], ['pembangunan', 'Kas Pembangunan'], ['sosial', 'Kas Sosial']], v: kas }]),
-      { n: 'pembayar', l: 'Nama pemilik rekening pengirim', ph: 'Sesuai bukti transfer' },
-      { n: 'catatan', l: 'Catatan (opsional)', t: 'textarea', full: true },
-      { n: 'file', l: 'Foto/screenshot bukti transfer', t: 'file', req: true, full: true }
-    ])}</form>`, kaki: `<button class="btn btn-outline" data-x>Batal</button><button class="btn btn-primary" id="by-ok">${ikon('send')} Kirim untuk verifikasi</button>` });
-  $('[data-x]', m.el).onclick = m.tutup;
-  $('#by-ok', m.el).onclick = async () => {
-    const f = $('#by-f', m.el);
-    if (!validasiForm(f)) return;
-    await sibuk($('#by-ok', m.el), async () => {
-      try {
-        const d = await bacaForm(f);
-        const r = await api('ajukanPembayaran', { tagihan: ids, nominal: Number(d.nominal), tanggal: d.tanggal, pembayar: d.pembayar, catatan: d.catatan, file: d.file, kas: d.kas });
-        m.tutup(); toast(r.pesan); router();
-      } catch (e) { gagal(e); }
-    });
+/** Wizard pembayaran transfer: 1) instruksi transfer + salin, 2) kirim bukti, 3) selesai */
+function wizardBayar(ids, total, rek, kas, tagihan) {
+  const m = modal({ judul: ids.length ? 'Bayar Tagihan' : 'Setor di Muka', ikonJudul: 'wallet', isi: '' });
+  const salin = (teks, label) => navigator.clipboard.writeText(teks).then(() => toast(label + ' disalin')).catch(() => toast('Salin manual: ' + teks));
+  const langkah = n => `<div class="langkah" style="margin-top:0">${['Pilih tagihan', 'Transfer', 'Kirim bukti'].map((l, i) => `<div class="${i < n ? 'on' : ''}"><b class="n">${i < n - 1 ? '✓' : i + 1}</b><span>${l}</span></div>`).join('')}</div>`;
+  const step2 = () => {
+    m.body.innerHTML = langkah(2) + `
+      ${ids.length ? `<div class="small muted mb-1">Tagihan yang dibayar</div>${tagihan.map(t => `<div class="row between small" style="padding:4px 0"><span>${esc(t.label)}</span><b class="mono">${rp(t.sisa)}</b></div>`).join('')}<hr style="border:0;border-top:1px solid var(--border);margin:8px 0 14px">` : `<div class="alert info mb-2">${ikon('info')}<div>Setoran ini menjadi <b>saldo di muka</b> dan otomatis dipakai untuk tagihan berikutnya.</div></div>`}
+      ${ids.length ? `<div class="small muted">Jumlah yang ditransfer</div><div class="salin-box"><span class="v">${rp(total)}</span><button class="btn btn-outline btn-sm" id="wz-c1">${ikon('copy', 'sm')} Salin</button></div>` : ''}
+      <div class="small muted">Transfer ke rekening RT</div>
+      ${rek ? `<div class="salin-box"><span class="v" style="font-size:16px">${esc(rek)}</span><button class="btn btn-outline btn-sm" id="wz-c2">${ikon('copy', 'sm')} Salin</button></div>` : `<div class="alert warn">${ikon('alert')}<div>Rekening RT belum diatur. Tanyakan ke Bendahara atau bayar tunai.</div></div>`}
+      <ol class="small" style="padding-left:20px;margin:12px 0 0;line-height:1.7"><li>Buka m-banking / e-wallet / ATM.</li><li>Transfer ${ids.length ? '<b>' + rp(total) + '</b>' : 'sesuai jumlah yang ingin disetor'} ke rekening di atas.</li><li>Simpan bukti transfer (screenshot / foto struk).</li></ol>
+      <div class="modal-f" style="margin:18px -20px -20px"><button class="btn btn-outline" id="wz-x">Nanti saja</button><button class="btn btn-primary" id="wz-next">Saya sudah transfer ${ikon('right')}</button></div>`;
+    if ($('#wz-c1', m.el)) $('#wz-c1', m.el).onclick = () => salin(String(total), 'Jumlah');
+    if ($('#wz-c2', m.el)) $('#wz-c2', m.el).onclick = () => salin((rek.match(/\d[\d\s.-]{5,}\d/) || [rek])[0].replace(/[\s.-]/g, ''), 'Nomor rekening');
+    $('#wz-x', m.el).onclick = m.tutup;
+    $('#wz-next', m.el).onclick = step3;
   };
+  const step3 = () => {
+    m.body.innerHTML = langkah(3) + `<form id="by-f" class="stack" novalidate>
+      ${field({ n: 'file', l: 'Foto / screenshot bukti transfer', t: 'file', req: true, full: true, ph: 'Ketuk untuk memilih foto · JPG/PNG/PDF' })}
+      ${formHTML([
+        { n: 'nominal', l: 'Jumlah yang ditransfer (Rp)', t: 'number', v: total || '', req: true, hint: ids.length ? 'Kalau transfer lebih, sisanya jadi saldo di muka. Kalau kurang, tagihan tercatat dibayar sebagian.' : '' },
+        { n: 'tanggal', l: 'Tanggal transfer', t: 'date', v: hariIni(), req: true },
+        ...(ids.length ? [] : [{ n: 'kas', l: 'Untuk kas', t: 'select', o: [['umum', 'Kas Umum'], ['pembangunan', 'Kas Pembangunan'], ['sosial', 'Kas Sosial']], v: kas }]),
+        { n: 'pembayar', l: 'Nama pengirim di bukti (opsional)', ph: 'Bila berbeda dengan nama Anda' },
+        { n: 'catatan', l: 'Catatan (opsional)', t: 'textarea', full: true }
+      ])}</form>
+      <div class="modal-f" style="margin:18px -20px -20px"><button class="btn btn-outline" id="wz-back">${ikon('left')} Kembali</button><button class="btn btn-primary" id="wz-kirim">${ikon('send')} Kirim bukti</button></div>`;
+    $('#wz-back', m.el).onclick = step2;
+    $('#wz-kirim', m.el).onclick = async () => {
+      const f = $('#by-f', m.el);
+      if (!validasiForm(f)) return;
+      await sibuk($('#wz-kirim', m.el), async () => {
+        try {
+          const d = await bacaForm(f);
+          const r = await api('ajukanPembayaran', { tagihan: ids, nominal: Number(d.nominal), tanggal: d.tanggal, pembayar: d.pembayar, catatan: d.catatan, file: d.file, kas: d.kas });
+          m.body.innerHTML = `<div class="wiz-sukses"><div class="ok-ico">${ikon('check')}</div><h3>Bukti terkirim!</h3><p class="muted">${esc(r.pesan)}<br>Anda akan menerima pemberitahuan WhatsApp setelah dicek. Status bisa dilihat di <b>Riwayat Pembayaran</b>.</p>
+            <div class="row" style="justify-content:center"><a class="btn btn-outline" href="#/panel/riwayat-bayar" id="wz-rw">${ikon('history')} Riwayat pembayaran</a><button class="btn btn-primary" id="wz-ok">Selesai</button></div></div>`;
+          $('#wz-ok', m.el).onclick = () => { m.tutup(); router(); };
+          $('#wz-rw', m.el).onclick = () => m.tutup();
+        } catch (e) { gagal(e); }
+      });
+    };
+  };
+  step2();
 }
 
 // ============================================================
@@ -190,13 +239,14 @@ daftarHalaman('keluarga', {
     window._agg = det.anggota; window._rumahSaya = r;
     el.innerHTML = kepala('Data Keluarga', 'Perubahan data berlaku setelah disetujui Administrator. Riwayat pembayaran rumah tidak terpengaruh.', `<button class="btn btn-primary" id="kl-tambah">${ikon('plus')} Ajukan tambah anggota</button>`) + `
     <div class="split"><div class="card flush"><div class="card-h"><h3>${ikon('users')} Anggota keluarga</h3><span class="badge">${det.anggota.filter(a => a.aktif).length} aktif</span></div>
-      <div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Nama</th><th>Hubungan</th><th>Tgl lahir</th><th>No. HP</th><th></th></tr></thead><tbody>
-      ${det.anggota.filter(a => a.aktif).map((a, i) => `<tr><td data-l="Nama"><b>${esc(a.nama)}</b> <span class="sub">${a.jk || ''}</span></td><td data-l="Hubungan">${esc(a.hubungan)}</td><td data-l="Tgl lahir">${esc(tgl(a.tglLahir, true))}</td><td data-l="No. HP" class="mono">${esc(a.hp || '-')}</td>
+      <div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Nama</th><th>Hubungan</th><th>Umur</th><th>No. HP</th><th></th></tr></thead><tbody>
+      ${det.anggota.filter(a => a.aktif).map((a, i) => `<tr><td data-l="Nama"><b>${esc(a.nama)}</b> <span class="sub">${a.jk || ''}</span>${a.terimaWA ? ` <span class="badge lunas">${ikon('wa', 'sm')} WA</span>` : ''}</td><td data-l="Hubungan">${esc(a.hubungan)}</td><td data-l="Umur"><b>${a.tglLahir ? esc(umurTeks(a.tglLahir)) : '—'}</b>${a.tglLahir ? `<div class="sub">${esc(tgl(a.tglLahir, true))}</div>` : ''}</td><td data-l="No. HP" class="mono">${esc(a.hp || '-')}</td>
         <td data-l=""><button class="btn btn-ghost btn-sm" onclick="ajukanUbahAnggota(${det.anggota.indexOf(a)})">${ikon('edit', 'sm')} Ubah</button><button class="btn btn-ghost btn-sm" onclick="ajukanNonaktif('${a.id}','${esc(a.nama)}')">${ikon('trash', 'sm')}</button></td></tr>`).join('') || `<tr><td colspan="5">${kosong('Belum ada data anggota keluarga.', 'users')}</td></tr>`}</tbody></table></div></div>
       <div class="stack"><div class="card"><div class="card-h"><h3>${ikon('home')} Rumah</h3></div><dl class="kv"><dt>Alamat</dt><dd>Blok ${esc(r.blok)} No. ${esc(r.no)}</dd><dt>Kepala keluarga</dt><dd>${esc(r.kepala || '-')}</dd>
           <dt>Status hunian</dt><dd>${badgeHunian(r.statusRumah)}</dd>${r.statusRumah === 'Dikontrak' ? `<dt>Pemilik rumah</dt><dd>${esc(r.pemilik || '— belum diisi —')}</dd>${r.waPemilik ? `<dt>WA pemilik</dt><dd class="mono">${esc(r.waPemilik)}</dd>` : ''}` : ''}
-          <dt>WA penerima notifikasi</dt><dd class="mono">${esc(r.wa || '-')}</dd></dl>
-        <div class="grid g-2 mt-2" style="gap:.5rem"><button class="btn btn-outline" id="kl-hunian">${ikon('key')} Ubah status hunian</button><button class="btn btn-outline" id="kl-wa">${ikon('wa')} Ganti nomor WA</button></div></div>
+          <dt>Penerima notifikasi WA</dt><dd>${(det.penerimaWA || []).length ? det.penerimaWA.map(p => `<div>${esc(p.nama || '-')} · <span class="mono">${esc(p.nomor)}</span></div>`).join('') : '-'}</dd></dl>
+        <p class="xs muted mt-1 mb-0">Ingin istri/anak juga menerima notifikasi? Hubungi Administrator RT.</p>
+        <div class="grid g-2 mt-2" style="gap:.5rem"><button class="btn btn-outline" id="kl-hunian">${ikon('key')} Ubah status hunian</button><button class="btn btn-outline" id="kl-wa">${ikon('wa')} Ganti nomor WA utama</button></div></div>
         <div class="card"><div class="card-h"><h3>${ikon('history')} Status pengajuan</h3></div>${prb.length ? prb.slice(0, 8).map(p => `<div class="list-item"><div class="grow"><div class="ttl">${esc({ tambah: 'Tambah anggota', ubah: 'Ubah data', nonaktif: 'Nonaktifkan', kontak: 'Ganti nomor WA', hunian: 'Ubah status hunian' }[p.jenis])}</div><div class="small muted">${esc(p.data.Nama || p.anggota || p.data.WA_Penerima || (p.data.Status_Rumah ? (LABEL_HUNIAN[p.data.Status_Rumah] || p.data.Status_Rumah) + (p.data.Pemilik_Rumah ? ' · ' + p.data.Pemilik_Rumah : '') : ''))} · ${esc(tgl(p.tanggal, true))}</div>${p.alasan ? `<div class="small err">${esc(p.alasan)}</div>` : ''}</div>${badge(p.status)}</div>`).join('') : kosong('Belum ada pengajuan.')}</div></div></div>`;
     $('#kl-tambah').onclick = () => formPerubahan('tambah', null, {});
     $('#kl-hunian').onclick = () => formHunian(r);

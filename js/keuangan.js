@@ -165,6 +165,71 @@ daftarHalaman('catat-tunai', {
 });
 
 // ============================================================
+// TUNGGAKAN LAMA (sebelum aplikasi dipakai) — Bendahara Kas Umum & Kas Pembangunan
+// ============================================================
+daftarHalaman('tunggakan-lama', {
+  judul: 'Tunggakan Lama', ikon: 'history', menu: 'Input Tunggakan Lama',
+  render: async el => {
+    const u = Sesi.user;
+    const [rumah, tagihan, set] = await Promise.all([daftarRumah(true), api('listTagihan', { kategori: 'KTG-TUNGGAKAN' }), api('getPengaturan')]);
+    const defNom = u.kas === 'umum' ? Number(set.nilai.IPL_NOMINAL) || '' : '';
+    const defKet = u.kas === 'umum' ? 'IPL' : 'Iuran Pembangunan';
+    const lalu = tambahBulan(periodeIni(), -1);
+    el.innerHTML = kepala('Input Tunggakan Lama', 'Catat tunggakan warga dari <b>sebelum aplikasi dipakai</b>. Tunggakan muncul di tagihan warga dan bisa dibayar seperti tagihan biasa.') + `
+    <div class="split"><div class="card"><form id="tl-f" class="stack" novalidate>
+      ${field({ n: 'ID_Rumah', l: 'Rumah', t: 'select', req: true, o: opsiRumah(rumah) })}
+      <div class="form-grid two">
+        ${field({ n: 'bulan', l: 'Berapa bulan menunggak?', t: 'number', req: true, v: 1, attr: 'min="1" max="60"' })}
+        ${field({ n: 'sampaiPeriode', l: 'Bulan terakhir yang belum dibayar', t: 'month', req: true, v: lalu, attr: 'max="' + periodeIni() + '"' })}
+      </div>
+      <div class="field"><label>Cara mengisi jumlah</label><div class="seg" id="tl-mode"><button type="button" class="on" data-m="perBulan">Nominal per bulan</button><button type="button" data-m="total">Total tunggakan</button></div></div>
+      ${field({ n: 'nominal', l: 'Nominal per bulan (Rp)', t: 'number', req: true, v: defNom })}
+      ${field({ n: 'keterangan', l: 'Jenis iuran', v: defKet, hint: 'Tampil di tagihan warga, misal "IPL" atau "Iuran Pembangunan".' })}
+      <label class="check"><input type="checkbox" name="satuTagihan"> <span>Gabung jadi <b>satu tagihan</b> (tidak dirinci per bulan)</span></label>
+      <div id="tl-prev"></div>
+      <button class="btn btn-primary" type="submit">${ikon('check')} Simpan tunggakan</button></form></div>
+      <div class="card" style="align-self:start"><h3 style="font-size:17px" class="mb-1">${ikon('info')} Cara kerja</h3><ul class="small muted" style="padding-left:18px;margin:0">
+        <li>Tunggakan dibuat sebagai tagihan ${esc(LABEL_KAS[u.kas])} per bulan (atau satu tagihan bila digabung).</li>
+        <li>Bila Anda mengisi <b>total</b>, nominal dibagi rata ke setiap bulan.</li>
+        <li>Bulan yang sudah punya tagihan/tunggakan otomatis ditolak agar tidak dobel.</li>
+        <li>Saldo di muka warga di kas ini langsung dipakai untuk melunasi.</li>
+        <li>Salah input? Batalkan tagihannya di tabel di bawah (selama belum dibayar).</li></ul></div></div>
+    <div class="card flush mt-3"><div class="card-h"><h3>${ikon('list')} Tunggakan lama tercatat</h3><span class="small muted">${tagihan.length} tagihan · sisa ${rp(tagihan.reduce((x, t) => x + t.sisa, 0))}</span></div>
+      ${tagihan.length ? `<div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Rumah</th><th>Tunggakan</th><th class="right">Nominal</th><th class="right">Sisa</th><th>Status</th><th></th></tr></thead><tbody>
+      ${tagihan.map(t => `<tr><td data-l="Rumah"><b>${esc(t.rumahLabel)}</b><div class="sub">${esc(t.kepala || '-')}</div></td><td data-l="Tunggakan">${esc(t.label)}</td><td data-l="Nominal" class="money">${rp(t.nominal)}</td><td data-l="Sisa" class="money">${rp(t.sisa)}</td><td data-l="Status">${badge(t.status)}</td><td data-l="">${t.terbayar === 0 ? `<button class="btn btn-ghost btn-sm" onclick="batalTagihan('${t.id}')" title="Batalkan">${ikon('xcircle', 'sm')}</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : kosong('Belum ada tunggakan lama yang dicatat.', 'history')}</div>`;
+    const f = $('#tl-f');
+    let mode = 'perBulan';
+    const prev = () => {
+      const n = Math.max(0, Math.round(Number($('[name=bulan]', f).value) || 0));
+      const nom = Math.round(Number($('[name=nominal]', f).value) || 0);
+      const akhir = $('[name=sampaiPeriode]', f).value;
+      const satu = $('[name=satuTagihan]', f).checked;
+      if (!n || !nom || !akhir) { $('#tl-prev').innerHTML = ''; return; }
+      const total = mode === 'total' ? nom : nom * n;
+      const awal = tambahBulan(akhir, -(n - 1));
+      const per = Math.floor(total / n);
+      $('#tl-prev').innerHTML = `<div class="alert ok">${ikon('receipt')}<div><b>${satu ? '1 tagihan' : n + ' tagihan'}</b> · total <b class="mono">${rp(total)}</b><br><span class="small">${esc(periodeLabel(awal))}${n > 1 ? ' – ' + esc(periodeLabel(akhir)) : ''}${!satu && n > 1 ? ' · ' + rp(per) + ' per bulan' + (total - per * n ? ' (bulan terakhir ' + rp(per + total - per * n) + ')' : '') : ''}</span></div></div>`;
+    };
+    $$('#tl-mode button').forEach(b => b.onclick = () => {
+      mode = b.dataset.m; $$('#tl-mode button').forEach(x => x.classList.toggle('on', x === b));
+      $('[name=nominal]', f).closest('.field').querySelector('label').innerHTML = (mode === 'total' ? 'Total tunggakan (Rp)' : 'Nominal per bulan (Rp)') + ' <span style="color:var(--danger)">*</span>';
+      prev();
+    });
+    $$('input', f).forEach(i => { i.addEventListener('input', prev); i.addEventListener('change', prev); });
+    prev();
+    f.onsubmit = async e => {
+      e.preventDefault(); if (!validasiForm(f)) return;
+      const d = await bacaForm(f);
+      const lbl = (rumah.find(x => x.id === d.ID_Rumah) || {});
+      if (!await konfirmasi(`Catat tunggakan ${esc(d.keterangan || defKet)} untuk Blok ${esc(lbl.blok)} No. ${esc(lbl.no)}?<br>${esc($('#tl-prev').textContent)}`, { ya: 'Ya, simpan' })) return;
+      await sibuk($('button[type=submit]', f), async () => {
+        try { const r = await api('catatTunggakanLama', { ID_Rumah: d.ID_Rumah, bulan: Number(d.bulan), sampaiPeriode: d.sampaiPeriode, nominal: Number(d.nominal), mode, keterangan: d.keterangan, satuTagihan: d.satuTagihan }); toast(r.pesan); router(); } catch (ex) { gagal(ex); }
+      });
+    };
+  }
+});
+
+// ============================================================
 // TRANSAKSI / BUKU KAS
 // ============================================================
 daftarHalaman('transaksi', {
@@ -176,15 +241,17 @@ daftarHalaman('transaksi', {
       const [ring, trx] = await Promise.all([api('ringkasanKas'), api('listTransaksi', { kas, batas: 300 })]);
       const r = kas ? ring.find(x => x.kas === kas) : null;
       el.innerHTML = kepala(bend ? LABEL_KAS[u.kas] : 'Buku Kas', bend ? 'Catat pemasukan lain, pengeluaran, dan serah terima kas. Koreksi dilakukan dengan pembatalan (tercatat di log).' : 'Pengawasan seluruh transaksi empat kas (baca saja).',
-        bend ? `<button class="btn btn-outline" id="tx-in">${ikon('plus')} Pemasukan</button><button class="btn btn-primary" id="tx-out">${ikon('wallet')} Pengeluaran</button>${u.peran === 'bend_umum' ? `<button class="btn btn-accent" id="tx-st">${ikon('swap')} Serah terima</button>` : ''}` : '') + `
+        bend ? `<button class="btn btn-outline" id="tx-sa">${ikon('database')} Saldo awal kas</button><button class="btn btn-outline" id="tx-in">${ikon('plus')} Pemasukan</button><button class="btn btn-primary" id="tx-out">${ikon('wallet')} Pengeluaran</button>${u.peran === 'bend_umum' ? `<button class="btn btn-accent" id="tx-st">${ikon('swap')} Serah terima</button>` : ''}` : '') + `
       ${!bend ? `<div class="tabs mb-2"><button class="tab ${!kas ? 'on' : ''}" data-k="">Semua kas</button>${Object.keys(LABEL_KAS).map(k => `<button class="tab ${kas === k ? 'on' : ''}" data-k="${k}">${LABEL_KAS[k]}</button>`).join('')}</div>` : ''}
-      <div class="grid g-4 mb-2">${(kas ? [r] : ring).map(k => kpiCard('bank', k.label, `<span class="mono" style="font-size:22px">${rp(k.saldo)}</span>`, `Bulan ini +${rp(k.masukBulanIni)} / −${rp(k.keluarBulanIni)}${k.titipan ? '<br>Titipan masuk: ' + rp(k.titipan) : ''}${k.dalamProses ? '<br>Usulan keluar: ' + rp(k.dalamProses) : ''}`)).join('')}</div>
+      ${bend && r && !r.saldoAwal ? `<div class="alert warn mb-2">${ikon('alert')}<div><b>Saldo awal kas belum diisi.</b> Bila ${esc(LABEL_KAS[u.kas])} sudah memiliki uang sebelum aplikasi dipakai, isi lewat tombol <b>Saldo awal kas</b> agar saldo di aplikasi sama dengan uang sebenarnya.</div></div>` : ''}
+      <div class="grid g-4 mb-2">${(kas ? [r] : ring).map(k => kpiCard('bank', k.label, `<span class="mono" style="font-size:22px">${rp(k.saldo)}</span>`, `Bulan ini +${rp(k.masukBulanIni)} / −${rp(k.keluarBulanIni)}${k.saldoAwal ? '<br>Saldo awal ' + rp(k.saldoAwal.nominal) + ' per ' + tgl(k.saldoAwal.tanggal, true) : ''}${k.titipan ? '<br>Titipan masuk: ' + rp(k.titipan) : ''}${k.dalamProses ? '<br>Usulan keluar: ' + rp(k.dalamProses) : ''}`)).join('')}</div>
       <div class="card flush"><div class="card-h"><h3>${ikon('receipt')} Mutasi</h3><button class="btn btn-outline btn-sm" id="tx-xls">${ikon('download', 'sm')} Excel</button></div>${tabelTrx(trx, {
-        kas: !kas, aksi: t => bend && t.status !== 'dibatalkan' && ((t.kas === u.kas && t.jenis !== 'serah_terima' && t.jenis !== 'alokasi' && !String(t.ref).startsWith('BYR')) || ((t.jenis === 'serah_terima' || t.jenis === 'alokasi') && t.status === 'diusulkan')) ?
+        kas: !kas, aksi: t => bend && t.status !== 'dibatalkan' && t.jenis !== 'saldo_awal' && ((t.kas === u.kas && t.jenis !== 'serah_terima' && t.jenis !== 'alokasi' && !String(t.ref).startsWith('BYR')) || ((t.jenis === 'serah_terima' || t.jenis === 'alokasi') && t.status === 'diusulkan')) ?
           ((t.jenis === 'serah_terima' || t.jenis === 'alokasi') && t.tujuan === u.kas ? `<button class="btn btn-accent btn-sm" onclick="konfSerah('${t.id}',true,this)">Terima</button>` : `<button class="btn btn-ghost btn-sm" title="Batalkan / koreksi" onclick="batalTrx('${t.id}')">${ikon('xcircle', 'sm')}</button>`) : (t.buktiId ? `<button class="btn btn-ghost btn-sm" onclick="bukaBerkas('${t.buktiId}')">${ikon('eye', 'sm')}</button>` : '')
       })}</div>`;
       $$('[data-k]', el).forEach(b => b.onclick = () => { kas = b.dataset.k; el.innerHTML = loader(); muat(); });
       $('#tx-xls').onclick = () => eksporExcel(trx.map(t => ({ Tanggal: t.tanggal, ID: t.id, Kas: t.kasLabel, Jenis: t.jenis, Kategori: t.kategori, Uraian: t.uraian, Nominal: t.nominal, Status: t.status, Pencatat: t.dicatatOleh })), 'Buku_Kas_' + (kas || 'semua') + '_' + hariIni() + '.xlsx', 'Mutasi');
+      if ($('#tx-sa')) $('#tx-sa').onclick = () => formSaldoAwal(r);
       if ($('#tx-in')) $('#tx-in').onclick = () => formTrx('masuk');
       if ($('#tx-out')) $('#tx-out').onclick = () => formTrx('keluar');
       if ($('#tx-st')) $('#tx-st').onclick = formSerahTerima;
@@ -202,6 +269,24 @@ function formTrx(jenis) {
   $('[data-x]', m.el).onclick = m.tutup;
   $('#tx-ok', m.el).onclick = () => { const f = $('#tx-f', m.el); if (!validasiForm(f)) return; sibuk($('#tx-ok', m.el), async () => { try { const d = await bacaForm(f); d.Jenis = jenis; d.Nominal = Number(d.Nominal); const r = await api('catatTransaksi', d); m.tutup(); toast(r.pesan); router(); } catch (e) { gagal(e); } }); };
 }
+/** Saldo awal kas: uang yang sudah ada sebelum aplikasi dipakai (satu per kas, bisa diubah) */
+function formSaldoAwal(r) {
+  const sa = (r && r.saldoAwal) || null;
+  const m = modal({ judul: 'Saldo Awal ' + LABEL_KAS[Sesi.user.kas], ikonJudul: 'database', isi: `
+    <div class="alert info mb-2">${ikon('info')}<div>Isi jumlah uang kas yang <b>sudah ada sebelum aplikasi dipakai</b>. Saldo awal ikut dihitung di saldo kas, tetapi <b>tidak</b> dihitung sebagai pemasukan bulanan.${sa ? '<br>Saat ini: <b>' + rp(sa.nominal) + '</b> per ' + esc(tgl(sa.tanggal)) + '. Isi <b>0</b> untuk menghapus.' : ''}</div></div>
+    <form id="sa-f">${formHTML([
+      { n: 'Nominal', l: 'Saldo awal (Rp)', t: 'number', v: sa ? sa.nominal : '', req: true, ph: 'Contoh: 2500000' },
+      { n: 'Tanggal', l: 'Per tanggal', t: 'date', v: sa ? sa.tanggal : hariIni(), req: true, hint: 'Tanggal saat uang kas dihitung, sebaiknya sebelum transaksi pertama di aplikasi.' },
+      { n: 'Uraian', l: 'Catatan (opsional)', t: 'textarea', full: true, ph: 'Contoh: Serah terima dari bendahara periode lalu' }
+    ])}</form><div class="small muted mt-1" id="sa-prev"></div>`,
+    kaki: `<button class="btn btn-outline" data-x>Batal</button><button class="btn btn-primary" id="sa-ok">${ikon('check')} Simpan saldo awal</button>` });
+  const f = $('#sa-f', m.el);
+  const prev = () => { const v = Number($('[name=Nominal]', f).value || 0); $('#sa-prev', m.el).innerHTML = v ? 'Akan tercatat: <b class="mono">' + rp(v) + '</b>' : ''; };
+  $('[name=Nominal]', f).oninput = prev; prev();
+  $('[data-x]', m.el).onclick = m.tutup;
+  $('#sa-ok', m.el).onclick = () => { if (!validasiForm(f)) return; sibuk($('#sa-ok', m.el), async () => { try { const d = await bacaForm(f); d.Nominal = Number(d.Nominal); const x = await api('simpanSaldoAwal', d); m.tutup(); toast(x.pesan); router(); } catch (e) { gagal(e); } }); };
+}
+
 async function formSerahTerima() {
   const set = (await api('getPengaturan')).nilai;
   const m = modal({ judul: 'Usulkan Serah Terima Kas', ikonJudul: 'swap', isi: `<div class="alert info mb-2">${ikon('info')}<div>Saldo kas tujuan baru bertambah setelah bendahara kas tujuan <b>mengonfirmasi</b>. Sebelum itu tercatat sebagai dana titipan.</div></div>

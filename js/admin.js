@@ -28,7 +28,7 @@ daftarHalaman('data-warga', {
       $('#dw-tbl').innerHTML = list.length ? `<div class="table-wrap" style="max-height:70vh;overflow:auto"><table class="tbl responsive"><thead><tr><th>Rumah</th><th>Kepala keluarga</th><th>Anggota</th><th>Status</th>${admin ? '<th>Akun</th>' : '<th>IPL bulan ini</th>'}<th>WhatsApp</th></tr></thead><tbody>
         ${list.map(r => `<tr class="clickable ${sel === r.id ? 'sel' : ''}" data-id="${r.id}"><td data-l="Rumah"><b>Blok ${esc(r.blok)} No. ${esc(r.no)}</b><div class="sub mono">${esc(r.id)}</div></td><td data-l="Kepala keluarga">${esc(r.kepala || '—')}</td><td data-l="Anggota">${r.jiwa} jiwa</td><td data-l="Status">${badgeHunian(r.statusRumah)}${r.statusRumah === 'Dikontrak' && r.pemilik ? `<div class="sub">Pemilik: ${esc(r.pemilik)}</div>` : ''}</td>
           ${admin ? `<td data-l="Akun">${r.akun ? badge(r.akun) : '<span class="badge">Belum ada</span>'}</td>` : `<td data-l="IPL">${r.iplBulanIni ? badge(r.iplBulanIni) : '<span class="muted small">—</span>'}${r.tunggakan ? `<div class="sub">Tunggakan ${rp(r.tunggakan)}</div>` : ''}</td>`}
-          <td data-l="WhatsApp" class="mono small">${esc(r.wa || '—')}</td></tr>`).join('')}</tbody></table></div>` : kosong('Tidak ada rumah yang cocok.', 'home');
+          <td data-l="WhatsApp" class="mono small">${esc(r.wa || (r.penerimaWA ? '' : '—'))}${r.penerimaWA > (r.wa ? 1 : 0) ? `<div class="sub">${r.wa ? '+' + (r.penerimaWA - 1) + ' penerima lain' : r.penerimaWA + ' penerima'}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>` : kosong('Tidak ada rumah yang cocok.', 'home');
       $$('#dw-tbl tr[data-id]').forEach(tr => tr.onclick = () => { sel = tr.dataset.id; $$('#dw-tbl tr').forEach(x => x.classList.toggle('sel', x === tr)); detailRumahPanel(sel); if (window.innerWidth < 1024) $('#dw-det').scrollIntoView({ behavior: 'smooth' }); });
     };
     $('#dw-q').oninput = e => { q = e.target.value.toLowerCase(); gambar(); };
@@ -50,14 +50,60 @@ async function detailRumahPanel(id) {
     const r = d.rumah;
     box.innerHTML = `<div class="card flush" style="position:sticky;top:80px"><div style="background:var(--navy);color:#fff;padding:20px"><div class="row between"><span class="eyebrow" style="color:#C9D8EA">Detail rumah</span>${badgeHunian(r.statusRumah)}</div><h2 style="color:#fff;font-size:22px" class="mt-1">Blok ${esc(r.blok)} No. ${esc(r.no)}</h2><div class="mono xs" style="color:#C9D8EA">${esc(r.id)}</div></div>
       <div style="padding:20px"><div class="card-h" style="margin-bottom:.5rem"><h3 style="font-size:16px">Anggota keluarga (${d.anggota.filter(a => a.aktif).length})</h3>${admin ? `<button class="btn btn-ghost btn-sm" onclick="formAnggota('${r.id}')">${ikon('plus', 'sm')} Tambah</button>` : ''}</div>
-      ${d.anggota.filter(a => a.aktif).map(a => `<div class="list-item"><span class="avatar" style="background:var(--navy-50);color:var(--navy)">${esc(inisial(a.nama))}</span><div class="grow"><b>${esc(a.nama)}</b> <span class="badge ${a.hubungan === 'Kepala Keluarga' ? 'penting' : ''}">${esc(a.hubungan)}</span><div class="small muted">${a.jk ? (a.jk === 'L' ? 'Laki-laki' : 'Perempuan') : ''}${a.tglLahir ? ' · ' + esc(tgl(a.tglLahir, true)) : ''}${a.hp ? ' · <span class="mono">' + esc(a.hp) + '</span>' : ''}</div></div>${admin ? `<button class="btn btn-ghost btn-sm" onclick="formAnggota('${r.id}', _det.anggota[${d.anggota.indexOf(a)}])">${ikon('edit', 'sm')}</button>` : ''}</div>`).join('') || kosong('Belum ada data anggota.')}
-      <div class="alert ${r.wa ? 'ok' : 'warn'} mt-2">${ikon('wa')}<div><b>WhatsApp penerima notifikasi</b><br><span class="mono">${esc(r.wa || 'Belum diisi')}</span>${r.wa ? ` <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://wa.me/62${r.wa.replace(/^0/, '')}">Chat</a>` : ''}</div></div>
+      ${d.anggota.filter(a => a.aktif).map((a, no) => `<div class="list-item"><span class="avatar" style="background:var(--navy-50);color:var(--navy)">${no + 1}</span><div class="grow"><b>${esc(a.nama)}</b> <span class="badge ${a.hubungan === 'Kepala Keluarga' ? 'penting' : ''}">${esc(a.hubungan)}</span>${a.terimaWA ? ` <span class="badge lunas" title="Menerima notifikasi WhatsApp">${ikon('wa', 'sm')} WA</span>` : ''}<div class="small muted"><b style="color:var(--ink)">${a.tglLahir ? esc(umurTeks(a.tglLahir)) : 'Umur —'}</b>${a.jk ? ' · ' + (a.jk === 'L' ? 'Laki-laki' : 'Perempuan') : ''}${a.tglLahir ? ' · lahir ' + esc(tgl(a.tglLahir, true)) : ''}${a.hp ? ' · <span class="mono">' + esc(a.hp) + '</span>' : ''}</div></div>${admin ? `<button class="btn btn-ghost btn-sm" onclick="formAnggota('${r.id}', _det.anggota[${d.anggota.indexOf(a)}])">${ikon('edit', 'sm')}</button>` : ''}</div>`).join('') || kosong('Belum ada data anggota.')}
+      <div class="alert ${d.penerimaWA.length ? 'ok' : 'warn'} mt-2">${ikon('wa')}<div class="grow"><b>Penerima notifikasi WhatsApp (${d.penerimaWA.length})</b>
+        ${d.penerimaWA.length ? d.penerimaWA.map(p => `<div class="small mt-1">${esc(p.nama || '-')} · <span class="mono">${esc(p.nomor)}</span>${p.utama ? ' <span class="badge info">Utama</span>' : ''}${!p.valid ? ' <span class="badge danger">Tidak valid</span>' : ''} <a target="_blank" rel="noopener" href="https://wa.me/62${p.nomor.replace(/^0/, '')}">Chat</a></div>`).join('') : '<div class="small">Belum ada nomor. Rumah ini tidak menerima notifikasi.</div>'}
+        ${admin ? `<button class="btn btn-outline btn-sm mt-2" onclick="aturPenerimaWA()">${ikon('settings', 'sm')} Atur penerima WA</button>` : ''}</div></div>
       <dl class="kv mt-2"><dt>Status hunian</dt><dd>${esc(LABEL_HUNIAN[r.statusRumah] || r.statusRumah)}</dd>${r.statusRumah === 'Dikontrak' ? `<dt>Pemilik rumah</dt><dd>${esc(r.pemilik || '— belum diisi —')}</dd>${r.waPemilik ? `<dt>WA pemilik</dt><dd class="mono">${esc(r.waPemilik)}</dd>` : ''}` : ''}</dl>
       ${!admin && d.keuangan ? `<dl class="kv mt-2"><dt>Tunggakan</dt><dd class="mono">${rp(d.keuangan.tunggakan)}</dd><dt>Saldo di muka</dt><dd class="mono">${rp(d.keuangan.saldoMuka)}</dd></dl>` : ''}
       ${r.keterangan ? `<div class="mt-2"><div class="lbl-f">Catatan pengurus</div><p class="small">${esc(r.keterangan)}</p></div>` : ''}
       ${d.riwayat.length ? `<details class="mt-2"><summary style="cursor:pointer;font-weight:600;color:var(--navy)">Riwayat penghuni (${d.riwayat.length})</summary>${d.riwayat.map(h => `<div class="list-item small"><div><b>${esc(h.kepala || '-')}</b> · ${esc(h.mulai || '?')} s.d. ${esc(h.selesai)}<div class="muted">${esc(h.anggota)}</div>${h.ket ? `<div>${esc(h.ket)}</div>` : ''}</div></div>`).join('')}</details>` : ''}
       ${admin ? `<div class="grid g-2 mt-2" style="gap:.5rem"><button class="btn btn-primary" onclick="formRumah(_det.rumah)">${ikon('edit')} Edit rumah</button><button class="btn btn-outline" onclick="gantiPenghuni('${r.id}')">${ikon('swap')} Penghuni pindah</button></div>` : ''}</div></div>`;
   } catch (e) { box.innerHTML = errorBox(e); }
+}
+/** Administrator memilih nomor mana saja di keluarga yang menerima notifikasi WhatsApp */
+function aturPenerimaWA() {
+  const d = window._det, r = d.rumah;
+  const nv = s => { let x = String(s || '').replace(/[^\d+]/g, ''); if (x.startsWith('+')) x = x.substr(1); if (x.startsWith('62')) x = '0' + x.substr(2); else if (x.startsWith('8')) x = '0' + x; return x; };
+  const ag = d.anggota.filter(a => a.aktif);
+  const punyaWA = ag.filter(a => hpValid(a.wa));
+  const tanpaWA = ag.filter(a => !hpValid(a.wa));
+  const utamaSaatIni = nv(r.wa);
+  const cocok = punyaWA.find(a => nv(a.wa) === utamaSaatIni);
+  const opsi = [['', '— Tanpa nomor utama —']].concat(punyaWA.map(a => [nv(a.wa), a.nama + ' (' + a.hubungan + ') — ' + nv(a.wa)]));
+  if (utamaSaatIni && !cocok) opsi.push([utamaSaatIni, 'Nomor saat ini — ' + utamaSaatIni]);
+  opsi.push(['__lain', 'Nomor lain (isi manual)…']);
+  const m = modal({ judul: 'Penerima WhatsApp — Blok ' + r.blok + ' No. ' + r.no, ikonJudul: 'wa', isi: `
+    <p class="small muted">Pilih siapa saja di keluarga ini yang menerima notifikasi (tagihan, pembayaran, surat, pengumuman). Satu pesan dikirim ke <b>setiap</b> nomor yang dipilih.</p>
+    <form id="pw-f" class="stack">
+      ${field({ n: 'utama', l: 'Nomor utama', t: 'select', o: opsi, v: utamaSaatIni, hint: 'Nomor utama tampil di daftar rumah. Boleh nomor istri/anak, tidak harus kepala keluarga.' })}
+      <div class="field hidden" id="pw-lain"><label for="pw-lain-i">Nomor WA lain</label><input id="pw-lain-i" name="lain" type="tel" class="input" placeholder="08xxxxxxxxxx"></div>
+      <div><div class="lbl-f mb-1">Juga kirim ke anggota keluarga</div>
+        ${punyaWA.length ? punyaWA.map(a => `<label class="check list-item"><input type="checkbox" class="pw-t" value="${a.id}" data-wa="${nv(a.wa)}" ${a.terimaWA ? 'checked' : ''}> <span class="grow"><b>${esc(a.nama)}</b> <span class="small muted">${esc(a.hubungan)}</span></span><span class="mono small">${esc(nv(a.wa))}</span></label>`).join('') : `<div class="alert info">${ikon('info')}<div>Belum ada anggota keluarga yang memiliki nomor WA.</div></div>`}
+        ${tanpaWA.length ? `<div class="xs muted mt-1">Belum punya nomor WA: ${tanpaWA.map(a => esc(a.nama)).join(', ')}. Tambahkan lewat tombol edit anggota.</div>` : ''}</div>
+      <div id="pw-ring" class="alert ok"></div>
+    </form>`, kaki: `<button class="btn btn-outline" data-x>Batal</button><button class="btn btn-primary" id="pw-ok">${ikon('check')} Simpan penerima</button>` });
+  const f = $('#pw-f', m.el);
+  const ring = () => {
+    const sel = $('[name=utama]', f).value;
+    $('#pw-lain', m.el).classList.toggle('hidden', sel !== '__lain');
+    const u = sel === '__lain' ? nv($('[name=lain]', f).value) : sel;
+    $$('.pw-t', f).forEach(c => { const sama = u && c.dataset.wa === u; c.disabled = sama; if (sama) c.checked = false; c.closest('label').style.opacity = sama ? .5 : 1; });
+    const nomor = [...new Set([u].concat($$('.pw-t:checked', f).map(c => c.dataset.wa)).filter(Boolean))];
+    $('#pw-ring', m.el).className = 'alert ' + (nomor.length ? 'ok' : 'warn');
+    $('#pw-ring', m.el).innerHTML = `${ikon('wa')}<div>${nomor.length ? '<b>' + nomor.length + ' nomor</b> akan menerima notifikasi: <span class="mono">' + nomor.join(', ') + '</span>' : 'Tidak ada penerima. Rumah ini tidak akan menerima notifikasi WhatsApp.'}</div>`;
+    return { u, nomor };
+  };
+  f.addEventListener('change', ring); f.addEventListener('input', ring); ring();
+  $('[data-x]', m.el).onclick = m.tutup;
+  $('#pw-ok', m.el).onclick = () => sibuk($('#pw-ok', m.el), async () => {
+    try {
+      const x = ring();
+      if ($('[name=utama]', f).value === '__lain' && !hpValid(x.u)) throw new Error('Nomor WA lain tidak valid (contoh: 081234567890).');
+      const res = await api('simpanPenerimaWA', { ID_Rumah: r.id, utama: x.u, tambahan: $$('.pw-t:checked', f).map(c => c.value) });
+      m.tutup(); toast(res.pesan); _rumahCache = null; detailRumahPanel(r.id);
+    } catch (e) { gagal(e); }
+  });
 }
 function formRumah(r = {}) {
   const m = modal({ judul: r.id ? 'Edit Rumah' : 'Tambah Rumah', ikonJudul: 'home', isi: `<form id="rm-f">${formHTML([
@@ -534,5 +580,63 @@ daftarHalaman('log', {
     $('#lg-go').onclick = () => { f.q = $('#lg-q').value; f.modul = $('#lg-m').value; f.dari = $('#lg-d').value; f.sampai = $('#lg-s').value; f.halaman = 1; muat(); };
     $('#lg-xls').onclick = async () => { try { const r = await api('listLog', Object.assign({}, f, { halaman: 1, batas: 5000 })); eksporExcel(r.data.map(l => ({ Waktu: l.waktu, Pelaku: l.nama, Username: l.username, Peran: l.peranLabel, Modul: l.modul, Aksi: l.aksi, 'ID Data': l.idData, 'Nilai Lama': l.lama, 'Nilai Baru': l.baru })), 'Log_Aktivitas_' + hariIni() + '.xlsx', 'Log'); } catch (e) { gagal(e); } };
     muat();
+  }
+});
+
+// ============================================================
+// STATISTIK WARGA (Administrator, Ketua RT, Sekretaris)
+// ============================================================
+const KATEGORI_WARGA = [
+  ['total', 'Total warga', 'users', ''], ['balita', 'Balita', 'heart', 'g'], ['anak', 'Anak-anak', 'user', 'g'],
+  ['dewasa', 'Dewasa', 'users', ''], ['lansia', 'Lansia', 'clock', 'y'], ['ibu', 'Ibu-ibu', 'heart', 'r'], ['tanpaTgl', 'Tgl lahir kosong', 'alert', 'y']
+];
+daftarHalaman('statistik-warga', {
+  judul: 'Statistik Warga', ikon: 'chart', menu: 'Statistik Warga', pendek: 'Statistik',
+  render: async (el, param) => {
+    const [st, rumah] = await Promise.all([api('statistikWarga'), daftarRumah()]);
+    const h = st.hitung;
+    let kat = 'total', q = '', fb = '', selRumah = param || '';
+    const blok = st.perBlok.map(b => b.blok);
+    const ket = { total: 'Semua anggota keluarga aktif', balita: st.batas.balita, anak: st.batas.anak, dewasa: st.batas.dewasa, lansia: st.batas.lansia, ibu: st.batas.ibu, tanpaTgl: 'Lengkapi tanggal lahir agar terhitung' };
+    el.innerHTML = kepala('Statistik Warga', 'Jumlah warga per kategori usia dan isi tiap rumah. Umur dihitung otomatis dari tanggal lahir per ' + esc(tgl(st.perTanggal)) + '.', `<button class="btn btn-outline" id="sw-xls">${ikon('download')} Ekspor Excel</button>`) + `
+      <div class="grid g-4" id="sw-kpi">${KATEGORI_WARGA.map(([k, l, ik, c]) => `<button class="card kpi sw-k" data-k="${k}" style="text-align:left;cursor:pointer;border:2px solid transparent">
+        <div class="ico ${c}">${ikon(ik)}</div><div class="lbl">${esc(l)}</div><div class="val">${h[k]}</div><div class="note">${esc(ket[k])}${k === 'total' ? ` · ${h.laki} L · ${h.perempuan} P` : ''}</div></button>`).join('')}</div>
+      <div class="tabs mt-3 mb-2"><button class="tab on" data-t="daftar">${ikon('list', 'sm')} Daftar per kategori</button><button class="tab" data-t="rumah">${ikon('home', 'sm')} Isi per rumah</button><button class="tab" data-t="blok">${ikon('building', 'sm')} Per blok</button></div>
+      <div id="sw-isi"></div>`;
+    const tab = { t: selRumah ? 'rumah' : 'daftar' };
+    const baris = o => `<td data-l="Nama"><b>${esc(o.nama)}</b></td><td data-l="Umur" class="nowrap"><b>${o.tglLahir ? esc(umurTeks(o.tglLahir)) : '—'}</b>${o.tglLahir ? `<div class="sub">${esc(tgl(o.tglLahir, true))}</div>` : ''}</td><td data-l="Status keluarga">${badge(o.hubungan === 'Kepala Keluarga' ? 'Penting' : '', o.hubungan)}</td><td data-l="JK">${o.jk === 'L' ? 'Laki-laki' : o.jk === 'P' ? 'Perempuan' : '—'}</td>`;
+    const gambarDaftar = () => {
+      const list = st.orang.filter(o => (kat === 'total' || o.kategori.includes(kat)) && (!fb || o.blok === fb) && (!q || (o.nama + ' ' + o.rumahLabel).toLowerCase().includes(q)));
+      $('#sw-isi').innerHTML = `<div class="card flush"><div class="card-h"><div><h3>${esc((KATEGORI_WARGA.find(x => x[0] === kat) || [])[1])}</h3><div class="sub">${esc(ket[kat])}</div></div>
+        <div class="row"><input class="input" id="sw-q" placeholder="Cari nama / rumah…" value="${esc(q)}" style="min-height:40px;width:200px"><select class="input" id="sw-b" style="min-height:40px;width:auto"><option value="">Semua blok</option>${blok.map(b => `<option ${b === fb ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select><span class="badge diajukan">${list.length} orang</span></div></div>
+        ${list.length ? `<div class="table-wrap" style="max-height:70vh;overflow:auto"><table class="tbl responsive"><thead><tr><th>Nama</th><th>Umur</th><th>Status keluarga</th><th>JK</th><th>Rumah</th></tr></thead><tbody>
+        ${list.map(o => `<tr class="clickable" data-r="${o.rumah}">${baris(o)}<td data-l="Rumah">${esc(o.rumahLabel)}</td></tr>`).join('')}</tbody></table></div>` : kosong('Tidak ada warga pada kategori ini.', 'users')}</div>`;
+      $('#sw-q').oninput = e => { q = e.target.value.toLowerCase(); const pos = e.target.selectionStart; gambarDaftar(); const i = $('#sw-q'); i.focus(); i.setSelectionRange(pos, pos); };
+      $('#sw-b').onchange = e => { fb = e.target.value; gambarDaftar(); };
+      $$('#sw-isi tr[data-r]').forEach(tr => tr.onclick = () => { selRumah = tr.dataset.r; pilihTab('rumah'); });
+    };
+    const gambarRumah = () => {
+      const isi = st.orang.filter(o => o.rumah === selRumah);
+      const r = rumah.find(x => x.id === selRumah);
+      $('#sw-isi').innerHTML = `<div class="card mb-2"><div class="field" style="margin:0"><label>Pilih rumah</label><select class="input" id="sw-r">${opsiRumah(rumah).map(([v, l]) => `<option value="${esc(v)}" ${v === selRumah ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div></div>
+        ${!selRumah ? `<div class="card">${kosong('Pilih rumah untuk melihat siapa saja penghuninya.', 'home')}</div>` : `<div class="card flush"><div class="card-h"><div><h3>${ikon('home')} Blok ${esc(r ? r.blok : '')} No. ${esc(r ? r.no : '')}</h3><div class="sub">${isi.length} penghuni · urut dari kepala keluarga sampai anak terakhir${r ? ' · ' + esc(LABEL_HUNIAN[r.statusRumah] || r.statusRumah || '') : ''}</div></div></div>
+        ${isi.length ? `<div class="table-wrap"><table class="tbl responsive"><thead><tr><th style="width:44px">No</th><th>Nama</th><th>Umur</th><th>Status dalam keluarga</th><th>JK</th></tr></thead><tbody>
+        ${isi.map((o, i) => `<tr><td data-l="No">${i + 1}</td>${baris(o)}</tr>`).join('')}</tbody></table></div>` : kosong('Belum ada data anggota keluarga di rumah ini.', 'users')}</div>`}`;
+      $('#sw-r').onchange = e => { selRumah = e.target.value; gambarRumah(); };
+    };
+    const gambarBlok = () => {
+      $('#sw-isi').innerHTML = `<div class="card flush"><div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Blok</th><th class="right">Total</th><th class="right">Balita</th><th class="right">Anak</th><th class="right">Dewasa</th><th class="right">Lansia</th><th class="right">Ibu-ibu</th><th class="right">Tgl kosong</th></tr></thead><tbody>
+        ${st.perBlok.map(b => `<tr><td data-l="Blok"><b>${esc(b.blok)}</b></td>${['total', 'balita', 'anak', 'dewasa', 'lansia', 'ibu', 'tanpaTgl'].map(k => `<td data-l="${k}" class="money">${b[k]}</td>`).join('')}</tr>`).join('')}
+        <tr style="background:#F8FAFC"><td data-l=""><b>Jumlah</b></td>${['total', 'balita', 'anak', 'dewasa', 'lansia', 'ibu', 'tanpaTgl'].map(k => `<td data-l="${k}" class="money"><b>${h[k]}</b></td>`).join('')}</tr></tbody></table></div></div>`;
+    };
+    const pilihTab = t => {
+      tab.t = t; $$('[data-t]', el).forEach(b => b.classList.toggle('on', b.dataset.t === t));
+      $$('.sw-k', el).forEach(b => b.style.borderColor = t === 'daftar' && b.dataset.k === kat ? 'var(--navy)' : 'transparent');
+      (t === 'rumah' ? gambarRumah : t === 'blok' ? gambarBlok : gambarDaftar)();
+    };
+    $$('[data-t]', el).forEach(b => b.onclick = () => pilihTab(b.dataset.t));
+    $$('.sw-k', el).forEach(b => b.onclick = () => { kat = b.dataset.k; pilihTab('daftar'); });
+    $('#sw-xls').onclick = () => eksporExcel(st.orang.map(o => ({ Blok: o.blok, 'No Rumah': o.no, Nama: o.nama, 'Status dalam keluarga': o.hubungan, 'Jenis kelamin': o.jk, 'Tanggal lahir': o.tglLahir, Umur: o.umur === null ? '' : o.umur, Kategori: o.kategori.map(k => (KATEGORI_WARGA.find(x => x[0] === k) || [k, k])[1]).join(', ') })), 'Statistik_Warga_' + hariIni() + '.xlsx', 'Warga');
+    pilihTab(tab.t);
   }
 });

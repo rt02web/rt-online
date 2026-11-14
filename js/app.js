@@ -22,27 +22,27 @@ function menuPeran(p) {
     ['Akun', ['akun']]
   ];
   if (p === 'admin') return [
-    ['Akun & Data', ['dashboard', 'akun-kelola', 'data-warga', 'impor', 'perubahan']],
+    ['Akun & Data', ['dashboard', 'akun-kelola', 'data-warga', 'statistik-warga', 'impor', 'perubahan']],
     ['Pengaturan RT', ['identitas', 'pengaturan', 'iuran-khusus', 'jenis-surat']],
     ['Integrasi & Audit', ['template-wa', 'siaran', 'fonnte', 'log']],
     ['Akun Saya', ['akun']]
   ];
   if (p === 'ketua') return [
-    ['Dashboard & Warga', ['dashboard', 'data-warga']],
+    ['Dashboard & Warga', ['dashboard', 'data-warga', 'statistik-warga']],
     ['Keuangan & Kas', ['laporan', 'transaksi', 'keringanan', 'riwayat-wa']],
     ['Surat & Layanan', ['surat-masuk', 'pengaduan', 'info']],
     ['Akun', ['akun']]
   ];
   if (p === 'sekretaris') return [
-    ['Dashboard', ['dashboard', 'data-warga']],
+    ['Dashboard & Warga', ['dashboard', 'data-warga', 'statistik-warga']],
     ['Informasi Warga', ['kelola-pengumuman', 'kelola-agenda', 'kelola-galeri', 'kelola-notulen']],
     ['Layanan', ['surat-masuk', 'pengaduan', 'laporan']],
     ['Akun', ['akun']]
   ];
-  // Bendahara
-  const khusus = { bend_jimpitan: ['jimpitan'], bend_sosial: ['bansos'] }[p] || [];
+  // Bendahara (tidak melihat data seluruh warga; hanya daftar rumah untuk transaksi)
+  const khusus = { bend_umum: ['tunggakan-lama'], bend_pembangunan: ['tunggakan-lama'], bend_jimpitan: ['jimpitan'], bend_sosial: ['bansos'] }[p] || [];
   return [
-    ['Dashboard', ['dashboard', 'data-warga']],
+    ['Dashboard', ['dashboard']],
     ['Keuangan & Kas', ['penerbitan', 'verifikasi', 'catat-tunai'].concat(khusus, ['transaksi', 'laporan'])],
     ['Notifikasi', ['siaran', 'riwayat-wa']],
     ['Akun', ['akun']]
