@@ -432,3 +432,23 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 15px; }
 .paper table td:first-child { white-space: nowrap; width: 130px; }
 @media (max-width: 559px) { .hero-stats { grid-template-columns: repeat(2, 1fr); gap: .75rem; } .hero-stats .kpi { padding: 14px; } .hero-stats .kpi .ico { display: none; } .hero-stats .kpi .val { font-size: 22px; } }
 @media (max-width: 767px) { .tbl.responsive td::before { font-family: var(--font); letter-spacing: 0; } }
+/* Indikator proses tipis di atas layar */
+#topbar { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 10000; pointer-events: none; opacity: 0; transition: opacity .2s; }
+#topbar.on { opacity: 1; background: linear-gradient(90deg, transparent, var(--green), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: jalanBar 1s linear infinite; }
+@keyframes jalanBar { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+.content { animation: muncul .18s ease-out; }
+@keyframes muncul { from { opacity: .4; } }
+/* Tombol di dalam grid boleh turun baris agar tidak keluar dari kartu */
+.grid > .btn, .grid > a.btn { white-space: normal; text-align: center; line-height: 1.25; padding: 8px 12px; min-width: 0; }
+/* HP: kartu angka 2 kolom agar tidak perlu banyak menggulir */
+@media (max-width: 559px) {
+  .grid:has(> .kpi) { grid-template-columns: repeat(2, 1fr); gap: .6rem; }
+  .grid:has(> .kpi) > .kpi { padding: 14px; }
+  .grid:has(> .kpi) > .kpi .ico { width: 30px; height: 30px; top: 12px; right: 12px; }
+  .grid:has(> .kpi) > .kpi .ico .icon { width: 16px; height: 16px; }
+  .grid:has(> .kpi) > .kpi .lbl { font-size: 11px; padding-right: 30px; }
+  .grid:has(> .kpi) > .kpi .val { font-size: 20px; }
+  .grid:has(> .kpi) > .kpi .note { font-size: 12px; }
+}
+.kas-mini { grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 1280px) { .kas-mini { grid-template-columns: repeat(4, 1fr); } }
