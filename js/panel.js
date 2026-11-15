@@ -81,7 +81,8 @@ function kartuKasUmumWarga(k) {
 
 function dashAdmin(el, d) {
   const s = d.statistik;
-  el.innerHTML = kepala('Dashboard Administrator', 'Ringkasan data warga, akun, dan kesehatan integrasi WhatsApp.', `<a class="btn btn-outline" href="#/panel/impor">${ikon('upload')} Impor Excel</a><a class="btn btn-primary" href="#/panel/akun-kelola">${ikon('users')} Kelola akun</a>`) + `
+  el.innerHTML = kepala('Dashboard Administrator', 'Ringkasan data warga, akun, kapasitas sistem, dan integrasi WhatsApp.', `<a class="btn btn-outline" href="#/panel/impor">${ikon('upload')} Impor Excel</a><a class="btn btn-primary" href="#/panel/akun-kelola">${ikon('users')} Kelola akun</a>`) + `
+  <div id="ver-alert"></div>
   ${s.migrasiError ? `<div class="alert err mb-2">${ikon('alert')}<div><b>Pembaruan struktur data tertunda.</b> ${esc(s.migrasiError)}<br><span class="small">Data Anda aman dan tidak diubah. Kembalikan urutan kolom pada tab tersebut seperti semula, lalu muat ulang halaman.</span></div></div>` : ''}
   ${!s.tokenFonnte ? `<div class="alert warn mb-2">${ikon('alert')}<div><b>Token Fonnte belum diatur.</b> Notifikasi WhatsApp akan tertahan di antrean. <a href="#/panel/fonnte">Atur sekarang</a></div></div>` : ''}
   ${s.rumahTanpaAkun ? `<div class="alert info mb-2">${ikon('info')}<div>${s.rumahTanpaAkun} rumah belum memiliki akun warga. <a href="#/panel/akun-kelola">Buat akun warga</a></div></div>` : ''}
@@ -91,6 +92,8 @@ function dashAdmin(el, d) {
     ${kpiCard('key', 'Akun aktif', s.akunAktif, `${s.akunBaru} belum ganti password · ${s.akunTerkunci} terkunci`, 'y')}
     ${kpiCard('edit', 'Perubahan data', s.perubahanMenunggu, 'Menunggu persetujuan', s.perubahanMenunggu ? 'r' : '')}
   </div>
+  <div class="row between mt-3 mb-1"><h3 style="font-size:17px">${ikon('database')} Kapasitas sistem</h3><button class="btn btn-ghost btn-sm" id="sys-segar">${ikon('refresh', 'sm')} Perbarui</button></div>
+  <div class="grid g-3" id="sys-cards">${[1, 2, 3].map(() => '<div class="card"><div class="skel" style="height:110px"></div></div>').join('')}</div>
   <div class="split mt-3">
     <div class="card flush"><div class="card-h"><h3>${ikon('history')} Aktivitas terbaru</h3><a href="#/panel/log">Log lengkap ${ikon('right', 'sm')}</a></div>
       <div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Waktu</th><th>Pelaku</th><th>Aksi</th><th>Data</th></tr></thead><tbody>
@@ -104,9 +107,66 @@ function dashAdmin(el, d) {
         <a class="btn btn-outline btn-block" href="#/panel/identitas">${ikon('building')} Identitas & pengurus</a>
         <a class="btn btn-outline btn-block" href="#/panel/pengaturan">${ikon('sliders')} Nominal & pengaturan</a>
         <a class="btn btn-outline btn-block" href="#/panel/perubahan">${ikon('edit')} Perubahan data warga</a>
+        <a class="btn btn-outline btn-block" href="#/panel/penerima-wa">${ikon('wa')} Penerima WA per keluarga</a>
         <a class="btn btn-outline btn-block" href="#/panel/statistik-warga">${ikon('chart')} Statistik warga (balita, lansia, dll.)</a></div></div>
     </div>
   </div>`;
+  cekVersiBackend();
+  muatKapasitas(false);
+  $('#sys-segar').onclick = () => muatKapasitas(true);
+}
+
+const VERSI_FRONTEND = '1.3.0';
+/** Peringatan bila kode Apps Script yang aktif masih versi lama */
+async function cekVersiBackend() {
+  try {
+    const p = await api('ping');
+    const v = String((p && p.versi) || '1.0.0');
+    const angka = x => x.split('.').map(Number).reduce((a, n) => a * 1000 + (n || 0), 0);
+    if (angka(v) < angka(VERSI_FRONTEND) && $('#ver-alert')) {
+      $('#ver-alert').innerHTML = `<div class="alert err mb-2">${ikon('alert')}<div><b>Server (Apps Script) masih versi ${esc(v)}, tampilan sudah versi ${VERSI_FRONTEND}.</b> Beberapa menu baru (Statistik Warga, Penerima WA, kapasitas sistem) belum bisa dipakai.<br><span class="small">Buka Apps Script → pastikan isi berkas sudah diganti → <b>Terapkan → Kelola deployment → ikon pensil → Versi: Versi baru → Terapkan</b>. Jangan pilih "Deployment baru".</span></div></div>`;
+    }
+  } catch (e) { }
+}
+
+const ukuranBerkas = b => { b = Number(b) || 0; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(b < 10 ? 2 : 1) : b) + ' ' + u[i]; };
+const angkaID = n => Number(n || 0).toLocaleString('id-ID');
+function batang(persen) {
+  const p = Math.max(0, Math.min(100, Number(persen) || 0));
+  const w = p >= 90 ? 'var(--danger)' : p >= 75 ? '#D97706' : 'var(--chart-b)';
+  return `<div class="bar mt-1" style="height:10px"><span style="width:${Math.max(p, 1)}%;background:${w}"></span></div>`;
+}
+
+/** Kartu kapasitas: database (Google Sheets), Google Drive, kuota WhatsApp (Fonnte) */
+async function muatKapasitas(segar) {
+  const box = $('#sys-cards'); if (!box) return;
+  if (segar) box.style.opacity = .5;
+  try {
+    const r = await api('ringkasanSistem', segar ? { segar: true } : {}, { segar });
+    if (!$('#sys-cards')) return;
+    const db = r.database || {}, dr = r.drive || {}, wa = r.wa || {};
+    const kartu = (ik, warna, judul, isi) => `<div class="card"><div class="row between"><div class="lbl-f" style="font-weight:700;color:var(--ink-2,#475569);text-transform:uppercase;font-size:12px;letter-spacing:.05em">${judul}</div><div class="ico ${warna}" style="width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--navy-50)">${ikon(ik)}</div></div>${isi}</div>`;
+    const gagalTxt = e => `<div class="small" style="color:var(--danger)">Tidak dapat dibaca: ${esc(e)}</div>`;
+    box.innerHTML =
+      kartu('database', '', 'Database (Google Sheets)', db.error ? gagalTxt(db.error) : `
+        <div class="mono" style="font-size:24px;font-weight:700;margin-top:6px">${db.persen}%</div>${batang(db.persen)}
+        <div class="small muted mt-1">${angkaID(db.sel)} dari ${angkaID(db.batasSel)} sel terpakai · ${angkaID(db.baris)} baris data di ${db.jumlahTab} tab</div>
+        <div class="xs muted mt-1">Terbesar: ${(db.tabTerbesar || []).slice(0, 3).map(t => esc(t.nama) + ' (' + angkaID(t.baris) + ')').join(', ')}</div>`) +
+      kartu('cloud', '', 'Penyimpanan Google Drive', dr.error ? gagalTxt(dr.error) : `
+        <div class="mono" style="font-size:24px;font-weight:700;margin-top:6px">${dr.batas ? dr.persen + '%' : ukuranBerkas(dr.terpakai)}</div>${dr.batas ? batang(dr.persen) : ''}
+        <div class="small muted mt-1">${ukuranBerkas(dr.terpakai)} dari ${dr.batas ? ukuranBerkas(dr.batas) : 'tak terbatas'} terpakai (seluruh akun Google)</div>
+        <div class="xs muted mt-1">Dipakai aplikasi: ${ukuranBerkas(dr.aplikasi)} · ${angkaID(dr.jumlahFile)}${dr.terpotong ? '+' : ''} berkas (bukti bayar, foto, surat)</div>`) +
+      kartu('wa', 'g', 'Kuota WhatsApp (Fonnte)', wa.error ? gagalTxt(wa.error) : !wa.adaToken ? `<div class="small mt-2">Token Fonnte belum diatur. <a href="#/panel/fonnte">Atur sekarang</a></div>` : `
+        <div class="mono" style="font-size:24px;font-weight:700;margin-top:6px">${wa.kuota === null || wa.kuota === undefined ? '—' : typeof wa.kuota === 'number' ? angkaID(wa.kuota) + ' <span class="small muted" style="font-family:var(--font)">pesan tersisa</span>' : esc(wa.kuota)}</div>
+        <div class="small muted mt-1">${wa.paket ? 'Paket ' + esc(wa.paket) : ''}${wa.berakhir ? ' · berlaku s.d. ' + esc(wa.berakhir) : ''}${wa.status ? ' · ' + esc(wa.status) : ''}</div>
+        <div class="xs muted mt-1">Terkirim hari ini ${angkaID(wa.terkirimHariIni)} / batas ${angkaID(wa.limitHari)} · bulan ini ${angkaID(wa.terkirimBulanIni)} · antre ${angkaID(wa.antrean)}${wa.gagalBulanIni ? ' · gagal ' + angkaID(wa.gagalBulanIni) : ''}</div>
+        ${typeof wa.kuota === 'number' && wa.kuota < 100 ? `<div class="alert warn mt-2" style="padding:8px 10px">${ikon('alert', 'sm')}<div class="small">Kuota hampir habis. Isi ulang di dashboard Fonnte.</div></div>` : ''}`);
+    const info = document.getElementById('sys-info');
+    if (info) info.remove();
+    box.insertAdjacentHTML('afterend', `<div class="xs muted mt-1" id="sys-info">Diperbarui ${esc(r.diperbarui)}. Data dicek ulang otomatis tiap 30 menit.</div>`);
+  } catch (e) {
+    if ($('#sys-cards')) $('#sys-cards').innerHTML = `<div class="card" style="grid-column:1/-1"><div class="small" style="color:var(--danger)">${ikon('alert', 'sm')} Kapasitas sistem belum dapat dimuat: ${esc(e.message)}</div></div>`;
+  } finally { if ($('#sys-cards')) $('#sys-cards').style.opacity = 1; }
 }
 
 function dashPengurus(el, d) {

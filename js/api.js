@@ -111,6 +111,7 @@ function olahGagal(m) {
   } else if (kode === 'GANTI_PASSWORD') {
     location.hash = '#/panel/akun';
   }
+  if (/^Aksi tidak dikenal/.test(pesan)) return new ApiError('Fitur ini belum aktif di server. Backend Apps Script belum diperbarui ke versi terbaru: Administrator perlu mengganti kode lalu memilih Terapkan → Kelola deployment → Edit → Versi baru. (' + pesan + ')', 'VERSI');
   return new ApiError(pesan, kode || (PESAN_ULANG.test(pesan) ? 'SIBUK' : ''));
 }
 

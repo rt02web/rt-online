@@ -22,7 +22,7 @@ function menuPeran(p) {
     ['Akun', ['akun']]
   ];
   if (p === 'admin') return [
-    ['Akun & Data', ['dashboard', 'akun-kelola', 'data-warga', 'statistik-warga', 'impor', 'perubahan']],
+    ['Akun & Data', ['dashboard', 'akun-kelola', 'data-warga', 'penerima-wa', 'statistik-warga', 'impor', 'perubahan']],
     ['Pengaturan RT', ['identitas', 'pengaturan', 'iuran-khusus', 'jenis-surat']],
     ['Integrasi & Audit', ['template-wa', 'siaran', 'fonnte', 'log']],
     ['Akun Saya', ['akun']]
