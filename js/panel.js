@@ -71,7 +71,7 @@ function dashWarga(el, d) {
 
 /** Transparansi Kas Umum untuk warga: saldo awal, pemasukan, pengeluaran, saldo akhir + grafik 6 bulan */
 function kartuKasUmumWarga(k) {
-  const kpi = (l, v, cls) => `<div class="card" style="box-shadow:none;padding:14px"><div class="xs muted" style="font-weight:600;text-transform:uppercase;letter-spacing:.04em">${l}</div><div class="mono mt-1" style="font-size:19px;font-weight:600;${cls || ''}">${v}</div></div>`;
+  const kpi = (l, v, cls) => `<div class="card" style="box-shadow:none;padding:14px"><div class="xs muted" style="font-weight:600;text-transform:uppercase;letter-spacing:.04em">${l}</div><div class="mono mt-1 fit" style="font-size:19px;font-weight:600;${cls || ''}">${v}</div></div>`;
   return `<div class="card"><div class="card-h"><div><h3>${ikon('bank')} Kas Umum RT</h3><div class="sub">Periode ${esc(periodeLabel(k.periode))} · transaksi terkonfirmasi</div></div><span class="badge info">Transparansi</span></div>
     <div class="grid kas-mini" style="gap:.6rem">${kpi('Saldo awal', rp(k.saldoAwal))}${kpi('Pemasukan', '+' + rp(k.pemasukan), 'color:var(--green-deep)')}${kpi('Pengeluaran', '−' + rp(k.pengeluaran), 'color:var(--danger)')}${kpi('Saldo akhir', rp(k.saldoAkhir), 'color:var(--navy)')}</div>
     <div class="mt-2">${k.tren.some(b => b.masuk || b.keluar) ? grafikBatang(k.tren.map(b => ({ label: b.label, a: b.masuk, b: b.keluar })), 'Pemasukan', 'Pengeluaran') : kosong('Belum ada transaksi Kas Umum dalam 6 bulan terakhir.', 'chart')}</div>
@@ -108,7 +108,7 @@ function dashAdmin(el, d) {
         <a class="btn btn-outline btn-block" href="#/panel/pengaturan">${ikon('sliders')} Nominal & pengaturan</a>
         <a class="btn btn-outline btn-block" href="#/panel/perubahan">${ikon('edit')} Perubahan data warga</a>
         <a class="btn btn-outline btn-block" href="#/panel/penerima-wa">${ikon('wa')} Penerima WA per keluarga</a>
-        <a class="btn btn-outline btn-block" href="#/panel/statistik-warga">${ikon('chart')} Statistik warga (balita, lansia, dll.)</a></div></div>
+        <a class="btn btn-outline btn-block" href="#/panel/statistik-warga">${ikon('chart')} Statistik warga (balita, remaja, lansia, dll.)</a></div></div>
     </div>
   </div>`;
   cekVersiBackend();
@@ -116,7 +116,7 @@ function dashAdmin(el, d) {
   $('#sys-segar').onclick = () => muatKapasitas(true);
 }
 
-const VERSI_FRONTEND = '1.3.0';
+const VERSI_FRONTEND = '1.4.0';
 /** Peringatan bila kode Apps Script yang aktif masih versi lama */
 async function cekVersiBackend() {
   try {
@@ -124,7 +124,7 @@ async function cekVersiBackend() {
     const v = String((p && p.versi) || '1.0.0');
     const angka = x => x.split('.').map(Number).reduce((a, n) => a * 1000 + (n || 0), 0);
     if (angka(v) < angka(VERSI_FRONTEND) && $('#ver-alert')) {
-      $('#ver-alert').innerHTML = `<div class="alert err mb-2">${ikon('alert')}<div><b>Server (Apps Script) masih versi ${esc(v)}, tampilan sudah versi ${VERSI_FRONTEND}.</b> Beberapa menu baru (Statistik Warga, Penerima WA, kapasitas sistem) belum bisa dipakai.<br><span class="small">Buka Apps Script → pastikan isi berkas sudah diganti → <b>Terapkan → Kelola deployment → ikon pensil → Versi: Versi baru → Terapkan</b>. Jangan pilih "Deployment baru".</span></div></div>`;
+      $('#ver-alert').innerHTML = `<div class="alert err mb-2">${ikon('alert')}<div><b>Server (Apps Script) masih versi ${esc(v)}, tampilan sudah versi ${VERSI_FRONTEND}.</b> Beberapa fitur baru (hapus &amp; pulihkan rumah, optimasi kecepatan) belum aktif.<br><span class="small">Buka Apps Script → pastikan isi berkas sudah diganti → <b>Terapkan → Kelola deployment → ikon pensil → Versi: Versi baru → Terapkan</b>. Jangan pilih "Deployment baru".</span></div></div>`;
     }
   } catch (e) { }
 }
@@ -163,7 +163,8 @@ async function muatKapasitas(segar) {
         ${typeof wa.kuota === 'number' && wa.kuota < 100 ? `<div class="alert warn mt-2" style="padding:8px 10px">${ikon('alert', 'sm')}<div class="small">Kuota hampir habis. Isi ulang di dashboard Fonnte.</div></div>` : ''}`);
     const info = document.getElementById('sys-info');
     if (info) info.remove();
-    box.insertAdjacentHTML('afterend', `<div class="xs muted mt-1" id="sys-info">Diperbarui ${esc(r.diperbarui)}. Data dicek ulang otomatis tiap 30 menit.</div>`);
+    box.insertAdjacentHTML('afterend', `<div class="xs muted mt-1 row between" id="sys-info"><span>Diperbarui ${esc(r.diperbarui)}. Data dicek ulang otomatis tiap 30 menit.</span><button class="btn btn-ghost btn-sm" id="sys-cache" title="Pakai bila Anda baru menyunting isi Spreadsheet secara langsung">${ikon('refresh', 'sm')} Segarkan data dari Spreadsheet</button></div>`);
+    $('#sys-cache').onclick = e => sibuk(e.currentTarget, async () => { try { const x = await api('segarkanCache'); toast(x.pesan); router(); } catch (er) { gagal(er); } });
   } catch (e) {
     if ($('#sys-cards')) $('#sys-cards').innerHTML = `<div class="card" style="grid-column:1/-1"><div class="small" style="color:var(--danger)">${ikon('alert', 'sm')} Kapasitas sistem belum dapat dimuat: ${esc(e.message)}</div></div>`;
   } finally { if ($('#sys-cards')) $('#sys-cards').style.opacity = 1; }

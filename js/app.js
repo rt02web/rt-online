@@ -61,6 +61,7 @@ function bnavPeran(p) {
 // ============================================================
 let _layout = null;
 let _urutRender = 0;
+let _halAktif = '';
 /**
  * @param {{diam?:boolean}} opsi diam=true → gambar ulang halaman yang sama tanpa loader & tanpa geser ke atas
  */
@@ -149,16 +150,27 @@ async function bukaPanel(key, param, diam) {
   }
   gambarSide(key); gambarTop(def); gambarBnav(key);
   tutupSide();
-  const el = $('#content');
+  const wadah = $('#content');
   const urut = ++_urutRender;
   const y = window.scrollY;
-  if (!diam) el.innerHTML = loader();
+  // v1.4: setiap pembukaan halaman memakai "lembar" sendiri. Bila pengguna sudah pindah menu sebelum data
+  // halaman lama selesai dimuat, hasil lama tertulis ke lembar yang sudah dilepas (tidak menimpa halaman baru).
+  const kunciHal = key + '|' + (param || '');
+  const lembarLama = wadah.firstElementChild && wadah.firstElementChild.classList.contains('hal') ? wadah.firstElementChild : null;
+  const sama = !diam && lembarLama && _halAktif === kunciHal; // gambar ulang halaman yang sama (mis. setelah simpan)
+  if (sama) diam = true;
+  let el = diam ? lembarLama : null;
+  if (!el) { el = document.createElement('div'); el.className = 'hal'; wadah.innerHTML = ''; wadah.appendChild(el); el.innerHTML = loader(); }
+  _halAktif = kunciHal;
   document.title = def.judul + ' — RT ONLINE';
   try {
     await def.render(el, param);
-    if (diam) window.scrollTo(0, y);
+    if (diam && urut === _urutRender) window.scrollTo(0, y);
   } catch (e) {
-    if (e.kode !== 'SESI_HABIS' && urut === _urutRender && !diam) el.innerHTML = errorBox(e, 'router()');
+    if (e.kode !== 'SESI_HABIS' && urut === _urutRender) {
+      if (!diam) el.innerHTML = errorBox(e, 'router()');
+      else if (sama) gagal(e);
+    }
   }
   if (!_sudahPrefetch) { _sudahPrefetch = true; setTimeout(prefetchPeran, 1200); }
 }
@@ -168,12 +180,13 @@ function prefetchPeran() {
   const p = Sesi.user && Sesi.user.peran;
   if (!p) return;
   const umum = [['dashboard'], ['listPengumuman'], ['listAgenda']];
+  const lapBulanIni = kas => ['laporanKas', { kas, dari: periodeIni() + '-01', sampai: hariIni() }]; // v1.4: menu Laporan langsung tampil
   const per = {
     warga: [['listTagihan'], ['ringkasanRumah'], ['getPengaturan'], ['listPembayaran'], ['listSurat'], ['listJenisSurat'], ['detailRumah'], ['listPengaduan'], ['listPerubahan'], ['listNotulen']],
-    ketua: [['listRumah'], ['listSurat'], ['ringkasanKas'], ['listTransaksi', { kas: '', batas: 300 }], ['listPengaduan'], ['listKeringanan']],
+    ketua: [['listRumah'], ['listSurat'], ['ringkasanKas'], ['listTransaksi', { kas: '', batas: 300 }], ['listPengaduan'], ['listKeringanan'], lapBulanIni('umum')],
     sekretaris: [['listRumah'], ['listSurat'], ['listGaleri'], ['listNotulen'], ['listPengaduan']],
     admin: [['listRumah'], ['listAkun'], ['getPengaturan'], ['listPengurus'], ['listPerubahan'], ['listIuranKhusus'], ['listJenisSurat'], ['listTemplateWA']]
-  }[p] || [['listRumah'], ['ringkasanKas'], ['listPembayaran', { status: 'Menunggu' }], ['listIuranKhusus'], ['listTagihan', {}], ['listTransaksi', { kas: Sesi.user.kas, batas: 300 }]];
+  }[p] || [['listRumah'], ['ringkasanKas'], ['listPembayaran', { status: 'Menunggu' }], ['listIuranKhusus'], ['listTagihan', {}], ['listTransaksi', { kas: Sesi.user.kas, batas: 300 }], lapBulanIni(Sesi.user.kas)];
   prefetch(umum.concat(per));
 }
 function gambarSide(aktif) {
@@ -204,7 +217,7 @@ function tutupSide() { const s = $('#side'); if (s) { s.classList.remove('open')
 async function keluar() {
   if (!await konfirmasi('Keluar dari RT ONLINE?', { ya: 'Keluar' })) return;
   try { await api('logout'); } catch (e) { }
-  Sesi.hapus(); _layout = null; _sudahPrefetch = false; location.hash = '#/login'; toast('Anda telah keluar.');
+  Sesi.hapus(); _layout = null; _halAktif = ''; _sudahPrefetch = false; location.hash = '#/login'; toast('Anda telah keluar.');
 }
 /** Hitung badge menu (verifikasi menunggu, surat masuk, dll.) */
 async function perbaruiHitung() {

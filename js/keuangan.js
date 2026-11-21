@@ -383,7 +383,7 @@ daftarHalaman('laporan', {
       `<button class="btn btn-outline" id="lp-pdf">${ikon('printer')} Unduh PDF</button><button class="btn btn-accent" id="lp-xls">${ikon('download')} Unduh Excel</button>`) + `
     ${!bend ? `<div class="tabs mb-2">${Object.keys(LABEL_KAS).map(k => `<button class="tab ${k === kas ? 'on' : ''}" data-k="${k}">${LABEL_KAS[k]}</button>`).join('')}</div>` : ''}
     <div class="card mb-2"><div class="row"><div class="tabs">${[['bulan', 'Bulan ini'], ['lalu', 'Bulan lalu'], ['triwulan', 'Triwulan ini'], ['tahun', 'Tahun ini']].map(([k, l]) => `<button class="tab ${k === 'bulan' ? 'on' : ''}" data-p="${k}">${l}</button>`).join('')}</div>
-      <div class="row grow" style="justify-content:flex-end"><input type="date" class="input" id="lp-dari" value="${dari}" style="width:auto"><span>s.d.</span><input type="date" class="input" id="lp-sampai" value="${sampai}" style="width:auto"><button class="btn btn-primary" id="lp-go">${ikon('search')} Terapkan</button></div></div></div>
+      <div class="row grow rentang"><input type="date" class="input" id="lp-dari" value="${dari}" aria-label="Dari tanggal"><span>s.d.</span><input type="date" class="input" id="lp-sampai" value="${sampai}" aria-label="Sampai tanggal"><button class="btn btn-primary" id="lp-go">${ikon('search')} Terapkan</button></div></div></div>
     <div id="lp-isi"></div>`;
     $$('[data-k]', el).forEach(b => b.onclick = () => { kas = b.dataset.k; $$('[data-k]', el).forEach(x => x.classList.toggle('on', x === b)); muat(); });
     $$('[data-p]', el).forEach(b => b.onclick = () => { [dari, sampai] = preset[b.dataset.p]; $('#lp-dari').value = dari; $('#lp-sampai').value = sampai; $$('[data-p]', el).forEach(x => x.classList.toggle('on', x === b)); muat(); });

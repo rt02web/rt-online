@@ -482,3 +482,62 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 15px; }
 .wiz-sukses .ok-ico .icon { width: 38px; height: 38px; }
 /* HP: judul halaman & tombol aksi bertumpuk agar deskripsi tidak terjepit */
 @media (max-width: 559px) { .page-head { flex-direction: column; align-items: stretch; } .page-head > .row { justify-content: flex-start; } }
+/* ===================================================================
+   v1.4 — Kenyamanan di HP (mayoritas pengguna memakai HP)
+   Semua aturan di bawah hanya MENAMBAH/menimpa tampilan, tidak mengubah data.
+   =================================================================== */
+/* Bilah navigasi bawah: label selalu satu baris */
+.bnav a > span:not(.cnt), .bnav button > span { max-width: 100%; padding: 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Angka & nominal tidak boleh patah di tengah (mis. "Rp12.470." lalu "000").
+   Bila tidak muat, PasAngka() di ui.js mengecilkan hurufnya otomatis. */
+.kpi .val, .fit, .bayar-hero .big { white-space: nowrap; overflow-wrap: normal; }
+.kpi .val.val-bungkus, .fit.val-bungkus, .bayar-hero .big.val-bungkus { white-space: normal; overflow-wrap: anywhere; }
+/* Kotak unggah berkas tampil sebagai satu kotak utuh (sebelumnya garis putus-putus terpecah) */
+.file-drop { display: block; }
+/* Kolom isian & kotak cari di baris filter tidak boleh terjepit: turun baris bila sempit */
+.row > .field.grow, .row > .input.grow, .row > input.grow { flex: 1 1 180px; }
+.list-item { flex-wrap: wrap; }
+.list-item > .grow { flex: 1 1 180px; }
+.card-h > :first-child { flex: 1 1 200px; min-width: 0; }
+/* Kartu pengajuan/pengaduan: isi di kiri, tombol di kanan → tombol turun ke bawah bila layar sempit */
+.row.between.top > .grow { flex: 1 1 220px; }
+/* Rentang tanggal (laporan) */
+.rentang { justify-content: flex-end; }
+.rentang input[type=date] { width: auto; }
+@media (max-width: 767px) {
+  /* Tabel → kartu: label di kiri, seluruh isi sel menjadi SATU kolom utuh di kanan.
+     (Dulu tiap potongan isi sel berjejer menyamping sehingga teks bertumpuk/terpotong.) */
+  .tbl.responsive, .tbl.responsive tbody { display: block; width: 100%; }
+  .tbl.responsive td { display: table; width: 100%; table-layout: fixed; padding: 6px 0; white-space: normal; overflow-wrap: anywhere; text-align: right; }
+  .tbl.responsive td::before { display: table-cell; width: 36%; padding-right: 12px; vertical-align: baseline; max-width: none; overflow-wrap: normal; }
+  .tbl.responsive td[data-l=""], .tbl.responsive td:not([data-l]) { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
+  .tbl.responsive td.money { white-space: nowrap; overflow-wrap: normal; }
+  .tbl.responsive td .sub { margin-top: 2px; }
+  /* Tab status: semua pilihan terlihat (turun baris), tidak tersembunyi di geser samping */
+  .tabs { flex-wrap: wrap; overflow-x: visible; }
+  .tab { min-height: 40px; padding: 0 14px; font-size: 14.5px; }
+}
+@media (max-width: 559px) {
+  .page-head h1 { font-size: 23px; }
+  .page-head { margin-bottom: 18px; }
+  .rentang { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; flex: 1 1 100%; }
+  .rentang input[type=date] { width: 100%; min-width: 0; }
+  .rentang > span { display: none; }
+  .rentang .btn { grid-column: 1 / -1; }
+  /* Tombol pilihan (segmented) di dalam formulir: penuh selebar kolom, label tidak terjepit */
+  .field .seg { display: flex; width: 100%; }
+  .field .seg button { flex: 1 1 0; padding: 6px 8px; line-height: 1.25; font-size: 15px; }
+  /* Baris kelola (agenda): tombol ubah/hapus pindah ke bawah agar judul tidak terjepit */
+  .adm-item { flex-direction: column; align-items: stretch !important; gap: 0 !important; }
+  .adm-item > .row { padding-top: 0 !important; justify-content: flex-end; margin: -6px 0 8px; }
+}
+/* v1.4: dialog hapus & pulihkan rumah */
+.hapus-kartu { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; background: var(--hover); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.pilih-alasan { display: grid; gap: 8px; }
+.opsi-alasan { display: flex; gap: 10px; align-items: flex-start; border: 2px solid var(--border); border-radius: 12px; padding: 10px 12px; cursor: pointer; background: #fff; transition: border-color .12s, background .12s; }
+.opsi-alasan.on { border-color: var(--danger); background: #FEF2F2; }
+.opsi-alasan input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--danger); flex: none; }
+.opsi-alasan span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.opsi-alasan small { color: var(--text-2); font-size: 13px; line-height: 1.35; }
+.ul-rapi { margin: 6px 0 0; padding-left: 18px; }
+.ul-rapi li + li { margin-top: 4px; }

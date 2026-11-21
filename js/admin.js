@@ -14,7 +14,7 @@ daftarHalaman('data-warga', {
     const blok = [...new Set(rows.map(r => r.blok))];
     let q = '', fb = '', fs = '', fi = '', sel = null;
     const jiwa = rows.reduce((s, r) => s + r.jiwa, 0);
-    el.innerHTML = kepala('Data Warga & Rumah', `Master data ${rows.length} rumah dalam ${blok.length} blok (${blok.join(', ')}).`, admin ? `<button class="btn btn-outline" onclick="formRumah()">${ikon('plus')} Tambah rumah</button><a class="btn btn-outline" href="#/panel/impor">${ikon('upload')} Impor Excel</a><button class="btn btn-primary" id="dw-xls">${ikon('download')} Ekspor</button>` : `<button class="btn btn-outline" id="dw-xls">${ikon('download')} Ekspor</button>`) + `
+    el.innerHTML = kepala('Data Warga & Rumah', `Master data ${rows.length} rumah dalam ${blok.length} blok (${blok.join(', ')}).`, admin ? `<button class="btn btn-outline" onclick="formRumah()">${ikon('plus')} Tambah rumah</button><a class="btn btn-outline" href="#/panel/impor">${ikon('upload')} Impor Excel</a><button class="btn btn-outline" onclick="daftarRumahTerhapus()">${ikon('history')} Rumah terhapus</button><button class="btn btn-primary" id="dw-xls">${ikon('download')} Ekspor</button>` : `<button class="btn btn-outline" id="dw-xls">${ikon('download')} Ekspor</button>`) + `
     <div class="grid g-5">${kpiCard('home', 'Total rumah', rows.length, '')}${kpiCard('users', 'Dihuni pemilik', rows.filter(r => r.statusRumah === 'Dihuni').length, '', 'g')}${kpiCard('key', 'Dikontrak / sewa', rows.filter(r => r.statusRumah === 'Dikontrak').length, '')}${kpiCard('building', 'Kosong', rows.filter(r => r.statusRumah === 'Kosong').length, '', 'y')}${kpiCard('users', 'Total jiwa', jiwa, rows.reduce((s, r) => s + r.laki, 0) + ' L · ' + rows.reduce((s, r) => s + r.perempuan, 0) + ' P')}</div>
     <div class="card mt-3"><div class="row"><input class="input grow" id="dw-q" placeholder="Cari nomor rumah, nama kepala keluarga, nomor WA…" style="min-width:200px">
       <select class="input" id="dw-b" style="width:auto"><option value="">Semua blok</option>${blok.map(b => `<option>${esc(b)}</option>`).join('')}</select>
@@ -58,7 +58,8 @@ async function detailRumahPanel(id) {
       ${!admin && d.keuangan ? `<dl class="kv mt-2"><dt>Tunggakan</dt><dd class="mono">${rp(d.keuangan.tunggakan)}</dd><dt>Saldo di muka</dt><dd class="mono">${rp(d.keuangan.saldoMuka)}</dd></dl>` : ''}
       ${r.keterangan ? `<div class="mt-2"><div class="lbl-f">Catatan pengurus</div><p class="small">${esc(r.keterangan)}</p></div>` : ''}
       ${d.riwayat.length ? `<details class="mt-2"><summary style="cursor:pointer;font-weight:600;color:var(--navy)">Riwayat penghuni (${d.riwayat.length})</summary>${d.riwayat.map(h => `<div class="list-item small"><div><b>${esc(h.kepala || '-')}</b> · ${esc(h.mulai || '?')} s.d. ${esc(h.selesai)}<div class="muted">${esc(h.anggota)}</div>${h.ket ? `<div>${esc(h.ket)}</div>` : ''}</div></div>`).join('')}</details>` : ''}
-      ${admin ? `<div class="grid g-2 mt-2" style="gap:.5rem"><button class="btn btn-primary" onclick="formRumah(_det.rumah)">${ikon('edit')} Edit rumah</button><button class="btn btn-outline" onclick="gantiPenghuni('${r.id}')">${ikon('swap')} Penghuni pindah</button></div>` : ''}</div></div>`;
+      ${admin ? `<div class="grid g-2 mt-2" style="gap:.5rem"><button class="btn btn-primary" onclick="formRumah(_det.rumah)">${ikon('edit')} Edit rumah</button><button class="btn btn-outline" onclick="gantiPenghuni('${r.id}')">${ikon('swap')} Penghuni pindah</button></div>
+      <button class="btn btn-danger btn-block mt-1" onclick="hapusRumahDialog('${r.id}')">${ikon('trash')} Hapus rumah ini</button>` : ''}</div></div>`;
   } catch (e) { box.innerHTML = errorBox(e); }
 }
 /** Administrator memilih nomor mana saja di keluarga yang menerima notifikasi WhatsApp */
@@ -128,6 +129,97 @@ async function gantiPenghuni(id) {
   const ket = await mintaTeks('Penghuni Pindah', 'Keterangan (misal: pindah ke luar kota, rumah dijual). Penghuni lama diarsipkan; tagihan & pembayaran tetap tercatat pada rumah.', { ya: 'Arsipkan penghuni', bahaya: true });
   if (ket === null) return;
   try { const r = await api('gantiPenghuni', { ID_Rumah: id, keterangan: ket }); toast(r.pesan); if (r.passwordBaru) tampilKredensial('Password baru akun rumah', [{ Rumah: id, 'Password awal': r.passwordBaru }], 'Akun rumah direset untuk penghuni baru. Password hanya tampil <b>sekali</b>.'); _rumahCache = null; detailRumahPanel(id); } catch (e) { gagal(e); }
+}
+
+// ============================================================
+// v1.4 — HAPUS & PULIHKAN RUMAH (Administrator)
+// ============================================================
+const ALASAN_HAPUS = [
+  ['keluar', 'Keluar dari wilayah RT02', 'Rumah ternyata bukan bagian RT02 / pindah wilayah.'],
+  ['salah', 'Salah input / data ganda', 'Rumah tercatat keliru atau dobel saat input/impor.'],
+  ['gabung', 'Menyatu dengan rumah sebelah', 'Dibeli tetangga dan kini menjadi satu rumah.']
+];
+async function hapusRumahDialog(id) {
+  const t = toastLoading('Memeriksa data rumah…');
+  let d, semua = [];
+  try { [d, semua] = await Promise.all([api('cekHapusRumah', { id }), daftarRumah()]); }
+  catch (e) { t(); return gagal(e); }
+  t();
+  if (d.blokir.length) {
+    const m = modal({ judul: 'Rumah belum bisa dihapus', ikonJudul: 'alert', isi: `<p><b>${esc(d.label)}</b>${d.kepala ? ' — ' + esc(d.kepala) : ''} masih punya urusan yang harus diselesaikan dulu:</p>
+      <div class="alert err">${ikon('alert')}<div><ul class="ul-rapi">${d.blokir.map(b => `<li>${esc(b)}</li>`).join('')}</ul></div></div>
+      <p class="small muted mt-2 mb-0">Ini menjaga uang dan surat warga tetap tercatat dengan benar. Setelah selesai, tekan lagi tombol <b>Hapus rumah ini</b>.</p>`,
+      kaki: `<button class="btn btn-primary" data-x>Mengerti</button>` });
+    $('[data-x]', m.el).onclick = m.tutup;
+    return;
+  }
+  const o = d.otomatis, rt = d.riwayatTetap;
+  const otomatis = [
+    o.tagihanBatal ? `${o.tagihanBatal} tagihan yang <b>belum dibayar sama sekali</b> dibatalkan (${o.tagihanPerKas.map(x => esc(x.kas) + ': ' + x.jumlah).join(', ')})` : '',
+    o.perubahan ? `${o.perubahan} pengajuan perubahan data ditolak otomatis` : '',
+    o.notif ? `${o.notif} pesan WhatsApp yang belum terkirim dibatalkan` : '',
+    o.keringanan ? `${o.keringanan} keringanan IPL dinonaktifkan` : ''
+  ].filter(Boolean);
+  const tujuan = semua.filter(x => x.id !== id).sort((a, b) => a.blok.localeCompare(b.blok) || String(a.no).localeCompare(String(b.no), 'id', { numeric: true }));
+  const m = modal({ judul: 'Hapus ' + d.label, ikonJudul: 'trash', isi: `
+    <div class="hapus-kartu"><div><b>${esc(d.label)}</b><div class="small muted">${esc(d.kepala || 'Tanpa kepala keluarga')} · ${d.anggotaAktif} anggota aktif${d.akun ? ' · akun: ' + esc(d.akun) : ' · belum punya akun'}</div></div><span class="mono xs muted">${esc(d.id)}</span></div>
+    <form id="hr-f" class="stack mt-2">
+      <div><div class="lbl-f mb-1">Alasan penghapusan <span style="color:var(--danger)">*</span></div>
+        <div class="pilih-alasan">${ALASAN_HAPUS.map(([v, l, k]) => `<label class="opsi-alasan"><input type="radio" name="alasan" value="${v}"><span><b>${esc(l)}</b><small>${esc(k)}</small></span></label>`).join('')}</div></div>
+      <div class="field hidden" id="hr-tj"><label for="hr-tujuan">Rumah yang membeli / menyatukan</label>
+        <select id="hr-tujuan" class="input"><option value="">Pilih rumah…</option>${tujuan.map(x => `<option value="${esc(x.id)}">Blok ${esc(x.blok)} No. ${esc(x.no)}${x.kepala ? ' — ' + esc(x.kepala) : ''}</option>`).join('')}</select>
+        <div class="hint">Bila tunggakan rumah ini perlu ditagihkan ke rumah tersebut, bendahara dapat mencatatnya lewat menu Tunggakan Lama.</div></div>
+      <div class="field"><label for="hr-cat">Catatan (opsional)</label><textarea id="hr-cat" class="input" rows="2" maxlength="300" placeholder="mis. Dibeli Bapak Agus No. 13 pada Oktober 2026"></textarea></div>
+      <div class="alert warn">${ikon('info')}<div><b>Yang akan terjadi:</b><ul class="ul-rapi">
+        <li>Rumah, ${d.anggotaTotal} data anggota${d.akun ? ', dan akun warganya' : ''} dihapus dari daftar warga.</li>
+        ${otomatis.map(x => `<li>${x}</li>`).join('')}
+        <li><b>Tetap tersimpan:</b> riwayat pembayaran (${rt.pembayaran}), tagihan lunas (${rt.tagihanLunas}), surat (${rt.surat}), pengaduan (${rt.pengaduan}). Laporan kas tidak berubah.</li>
+        <li>Salinan lengkap disimpan; rumah <b>bisa dipulihkan</b> dari tombol <b>Rumah terhapus</b>.</li></ul></div></div>
+      <div class="field"><label for="hr-kf">Ketik <b class="mono">${esc(d.konfirmasiTeks)}</b> untuk konfirmasi</label>
+        <input id="hr-kf" class="input mono" autocomplete="off" autocapitalize="characters" placeholder="${esc(d.konfirmasiTeks)}"></div>
+    </form>`, kaki: `<button class="btn btn-outline" data-x>Batal</button><button class="btn btn-danger" id="hr-ok" disabled>${ikon('trash')} Hapus rumah</button>` });
+  const f = $('#hr-f', m.el), ok = $('#hr-ok', m.el);
+  const norm = x => String(x || '').toUpperCase().replace(/\s+/g, '');
+  const alasan = () => (f.querySelector('[name=alasan]:checked') || {}).value || '';
+  const cek = () => {
+    $('#hr-tj', m.el).classList.toggle('hidden', alasan() !== 'gabung');
+    $$('.opsi-alasan', f).forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
+    ok.disabled = !(alasan() && norm($('#hr-kf', m.el).value) === norm(d.konfirmasiTeks) && (alasan() !== 'gabung' || $('#hr-tujuan', m.el).value));
+  };
+  f.addEventListener('change', cek); f.addEventListener('input', cek);
+  $('[data-x]', m.el).onclick = m.tutup;
+  ok.onclick = () => sibuk(ok, async () => {
+    try {
+      const r = await api('hapusRumah', { id, alasan: alasan(), tujuan: $('#hr-tujuan', m.el).value, catatan: $('#hr-cat', m.el).value, konfirmasi: $('#hr-kf', m.el).value });
+      m.tutup(); toast(r.pesan, 'ok', 7000); _rumahCache = null;
+      const box = $('#dw-det'); if (box) box.innerHTML = `<div class="card">${kosong('Pilih rumah untuk melihat detail.', 'home')}</div>`;
+      router();
+    } catch (e) { gagal(e); }
+  });
+}
+async function daftarRumahTerhapus() {
+  const m = modal({ judul: 'Rumah terhapus', ikonJudul: 'history', besar: true, isi: loader() });
+  const gambar = async () => {
+    try {
+      const rows = await api('listRumahTerhapus');
+      m.body.innerHTML = rows.length ? `<p class="small muted">Rumah yang pernah dihapus beserta salinannya. Pulihkan bila terhapus karena keliru.</p>` + rows.map(x => `<div class="list-item"><div class="grow"><b>${esc(x.label)}</b>${x.kepala ? ' · ' + esc(x.kepala) : ''}
+        <div class="small muted">${esc(x.alasan)}${x.catatan ? ' — ' + esc(x.catatan) : ''}</div><div class="xs muted">Dihapus ${esc(tglJam(x.waktu))} oleh ${esc(x.oleh)} · ${x.anggota} anggota</div></div>
+        ${x.dipulihkan ? `<span class="badge lunas">Dipulihkan ${esc(tgl(x.dipulihkan, true))}</span>` : x.adaLagi ? '<span class="badge">Sudah ada lagi</span>' : `<button class="btn btn-outline btn-sm" data-a="${esc(x.arsip)}" data-l="${esc(x.label)}">${ikon('refresh', 'sm')} Pulihkan</button>`}</div>`).join('')
+        : kosong('Belum ada rumah yang dihapus.', 'history');
+      $$('[data-a]', m.body).forEach(b => b.onclick = async () => {
+        if (!await konfirmasi(`Pulihkan <b>${esc(b.dataset.l)}</b> beserta anggota keluarganya? Akun warga dibuat ulang dengan password awal baru.`, { judul: 'Pulihkan rumah', ya: 'Pulihkan' })) return;
+        sibuk(b, async () => {
+          try {
+            const r = await api('pulihkanRumah', { arsip: b.dataset.a });
+            toast(r.pesan, 'ok', 7000); _rumahCache = null;
+            if (r.akun) tampilKredensial('Password awal akun rumah', [{ Rumah: 'Blok ' + r.akun.blok + ' No. ' + r.akun.no, 'Kepala keluarga': r.akun.kepala, 'Password awal': r.akun.passwordAwal }], 'Akun rumah yang dipulihkan memakai password awal <b>baru</b> dan hanya tampil sekali. Kirim secara pribadi ke nomor WA keluarga tersebut.');
+            gambar(); if (location.hash.indexOf('data-warga') >= 0) router();
+          } catch (e) { gagal(e); }
+        });
+      });
+    } catch (e) { m.body.innerHTML = errorBox(e); }
+  };
+  gambar();
 }
 
 // ============================================================
@@ -519,7 +611,7 @@ daftarHalaman('siaran', {
 // INTEGRASI FONNTE
 // ============================================================
 daftarHalaman('fonnte', {
-  judul: 'Integrasi Fonnte', ikon: 'zap', menu: 'Integrasi Fonnte', cntMerah: true,
+  judul: 'Integrasi Fonnte', ikon: 'zap', menu: 'Integrasi Fonnte', pendek: 'Fonnte', cntMerah: true,
   render: async el => {
     let st = '';
     const [s, r, kontak] = await Promise.all([api('statusFonnte', { cekPerangkat: true }), api('riwayatNotif', { batas: 150 }), api('listKontak')]);
@@ -590,9 +682,10 @@ daftarHalaman('log', {
 // STATISTIK WARGA (Administrator, Ketua RT, Sekretaris)
 // ============================================================
 const KATEGORI_WARGA = [
-  ['total', 'Total warga', 'users', ''], ['balita', 'Balita', 'heart', 'g'], ['anak', 'Anak-anak', 'user', 'g'],
+  ['total', 'Total warga', 'users', ''], ['balita', 'Balita', 'heart', 'g'], ['anak', 'Anak-anak', 'user', 'g'], ['remaja', 'Remaja', 'user', ''],
   ['dewasa', 'Dewasa', 'users', ''], ['lansia', 'Lansia', 'clock', 'y'], ['ibu', 'Ibu-ibu', 'heart', 'r'], ['tanpaTgl', 'Tgl lahir kosong', 'alert', 'y']
 ];
+const LABEL_KAT = { total: 'Total', balita: 'Balita', anak: 'Anak', remaja: 'Remaja', dewasa: 'Dewasa', lansia: 'Lansia', ibu: 'Ibu-ibu', tanpaTgl: 'Tgl kosong' };
 daftarHalaman('statistik-warga', {
   judul: 'Statistik Warga', ikon: 'chart', menu: 'Statistik Warga', pendek: 'Statistik',
   render: async (el, param) => {
@@ -600,10 +693,10 @@ daftarHalaman('statistik-warga', {
     const h = st.hitung;
     let kat = 'total', q = '', fb = '', selRumah = param || '';
     const blok = st.perBlok.map(b => b.blok);
-    const ket = { total: 'Semua anggota keluarga aktif', balita: st.batas.balita, anak: st.batas.anak, dewasa: st.batas.dewasa, lansia: st.batas.lansia, ibu: st.batas.ibu, tanpaTgl: 'Lengkapi tanggal lahir agar terhitung' };
+    const ket = { total: 'Semua anggota keluarga aktif', balita: st.batas.balita, anak: st.batas.anak, remaja: st.batas.remaja || '10–17 tahun (juga terhitung di Anak-anak)', dewasa: st.batas.dewasa, lansia: st.batas.lansia, ibu: st.batas.ibu, tanpaTgl: 'Lengkapi tanggal lahir agar terhitung' };
     el.innerHTML = kepala('Statistik Warga', 'Jumlah warga per kategori usia dan isi tiap rumah. Umur dihitung otomatis dari tanggal lahir per ' + esc(tgl(st.perTanggal)) + '.', `<button class="btn btn-outline" id="sw-xls">${ikon('download')} Ekspor Excel</button>`) + `
       <div class="grid g-4" id="sw-kpi">${KATEGORI_WARGA.map(([k, l, ik, c]) => `<button class="card kpi sw-k" data-k="${k}" style="text-align:left;cursor:pointer;border:2px solid transparent">
-        <div class="ico ${c}">${ikon(ik)}</div><div class="lbl">${esc(l)}</div><div class="val">${h[k]}</div><div class="note">${esc(ket[k])}${k === 'total' ? ` · ${h.laki} L · ${h.perempuan} P` : ''}</div></button>`).join('')}</div>
+        <div class="ico ${c}">${ikon(ik)}</div><div class="lbl">${esc(l)}</div><div class="val">${h[k] || 0}</div><div class="note">${esc(ket[k])}${k === 'total' ? ` · ${h.laki} L · ${h.perempuan} P` : ''}</div></button>`).join('')}</div>
       <div class="tabs mt-3 mb-2"><button class="tab on" data-t="daftar">${ikon('list', 'sm')} Daftar per kategori</button><button class="tab" data-t="rumah">${ikon('home', 'sm')} Isi per rumah</button><button class="tab" data-t="blok">${ikon('building', 'sm')} Per blok</button></div>
       <div id="sw-isi"></div>`;
     const tab = { t: selRumah ? 'rumah' : 'daftar' };
@@ -613,7 +706,7 @@ daftarHalaman('statistik-warga', {
       const list = st.orang.filter(o => (kat === 'total' || o.kategori.includes(kat)) && (!fb || o.blok === fb) && (!fjk || o.jk === fjk) && (!q || (o.nama + ' ' + o.rumahLabel).toLowerCase().includes(q)));
       const nmKat = (KATEGORI_WARGA.find(x => x[0] === kat) || [])[1];
       $('#sw-isi').innerHTML = `<div class="card mb-2"><div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end">
-          <div class="field" style="margin:0"><label>Kategori</label><select class="input" id="sw-k">${KATEGORI_WARGA.map(([k, l]) => `<option value="${k}" ${k === kat ? 'selected' : ''}>${esc(l)} (${h[k]})</option>`).join('')}</select></div>
+          <div class="field" style="margin:0"><label>Kategori</label><select class="input" id="sw-k">${KATEGORI_WARGA.map(([k, l]) => `<option value="${k}" ${k === kat ? 'selected' : ''}>${esc(l)} (${h[k] || 0})</option>`).join('')}</select></div>
           <div class="field" style="margin:0"><label>Jenis kelamin</label><select class="input" id="sw-jk"><option value="">Semua</option><option value="L" ${fjk === 'L' ? 'selected' : ''}>Laki-laki</option><option value="P" ${fjk === 'P' ? 'selected' : ''}>Perempuan</option></select></div>
           <div class="field" style="margin:0"><label>Blok</label><select class="input" id="sw-b"><option value="">Semua blok</option>${blok.map(b => `<option ${b === fb ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
           <div class="field" style="margin:0"><label>Cari</label><input class="input" id="sw-q" placeholder="Nama / rumah…" value="${esc(q)}"></div></div></div>
@@ -637,9 +730,9 @@ daftarHalaman('statistik-warga', {
       $('#sw-r').onchange = e => { selRumah = e.target.value; gambarRumah(); };
     };
     const gambarBlok = () => {
-      $('#sw-isi').innerHTML = `<div class="card flush"><div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Blok</th><th class="right">Total</th><th class="right">Balita</th><th class="right">Anak</th><th class="right">Dewasa</th><th class="right">Lansia</th><th class="right">Ibu-ibu</th><th class="right">Tgl kosong</th></tr></thead><tbody>
-        ${st.perBlok.map(b => `<tr><td data-l="Blok"><b>${esc(b.blok)}</b></td>${['total', 'balita', 'anak', 'dewasa', 'lansia', 'ibu', 'tanpaTgl'].map(k => `<td data-l="${k}" class="money">${b[k]}</td>`).join('')}</tr>`).join('')}
-        <tr style="background:#F8FAFC"><td data-l=""><b>Jumlah</b></td>${['total', 'balita', 'anak', 'dewasa', 'lansia', 'ibu', 'tanpaTgl'].map(k => `<td data-l="${k}" class="money"><b>${h[k]}</b></td>`).join('')}</tr></tbody></table></div></div>`;
+      $('#sw-isi').innerHTML = `<div class="card flush"><div class="table-wrap"><table class="tbl responsive"><thead><tr><th>Blok</th><th class="right">Total</th><th class="right">Balita</th><th class="right">Anak</th><th class="right">Remaja</th><th class="right">Dewasa</th><th class="right">Lansia</th><th class="right">Ibu-ibu</th><th class="right">Tgl kosong</th></tr></thead><tbody>
+        ${st.perBlok.map(b => `<tr><td data-l="Blok"><b>${esc(b.blok)}</b></td>${['total', 'balita', 'anak', 'remaja', 'dewasa', 'lansia', 'ibu', 'tanpaTgl'].map(k => `<td data-l="${LABEL_KAT[k]}" class="money">${b[k] || 0}</td>`).join('')}</tr>`).join('')}
+        <tr style="background:#F8FAFC"><td data-l=""><b>Jumlah</b></td>${['total', 'balita', 'anak', 'remaja', 'dewasa', 'lansia', 'ibu', 'tanpaTgl'].map(k => `<td data-l="${LABEL_KAT[k]}" class="money"><b>${h[k] || 0}</b></td>`).join('')}</tr></tbody></table></div></div>`;
     };
     const pilihTab = t => {
       tab.t = t; $$('[data-t]', el).forEach(b => b.classList.toggle('on', b.dataset.t === t));

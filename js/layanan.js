@@ -139,7 +139,7 @@ daftarHalaman('kelola-agenda', {
     window._agd = rows;
     const t = hariIni();
     el.innerHTML = kepala('Kelola Agenda', 'Agenda tampil di portal publik dan dashboard warga.', `<button class="btn btn-primary" onclick="formAgenda()">${ikon('plus')} Agenda baru</button>`) +
-      `<div class="card">${rows.length ? rows.slice().sort((a, b) => (a.tanggal < t) - (b.tanggal < t) || (a.tanggal < t ? b.tanggal.localeCompare(a.tanggal) : a.tanggal.localeCompare(b.tanggal))).map(a => `<div class="row top" style="border-bottom:1px solid var(--border)"><div class="grow" style="${a.tanggal < t ? 'opacity:.6' : ''}">${itemAgenda(a, false)}</div><div class="row" style="padding-top:14px"><button class="btn btn-ghost btn-sm" onclick="formAgenda(_agd[${rows.indexOf(a)}])">${ikon('edit', 'sm')}</button><button class="btn btn-ghost btn-sm" onclick="hapusKonten('agenda','${a.id}')">${ikon('trash', 'sm')}</button></div></div>`).join('') : kosong('Belum ada agenda.', 'calendar')}</div>`;
+      `<div class="card">${rows.length ? rows.slice().sort((a, b) => (a.tanggal < t) - (b.tanggal < t) || (a.tanggal < t ? b.tanggal.localeCompare(a.tanggal) : a.tanggal.localeCompare(b.tanggal))).map(a => `<div class="row top adm-item" style="border-bottom:1px solid var(--border)"><div class="grow" style="${a.tanggal < t ? 'opacity:.6' : ''}">${itemAgenda(a, false)}</div><div class="row" style="padding-top:14px"><button class="btn btn-ghost btn-sm" onclick="formAgenda(_agd[${rows.indexOf(a)}])">${ikon('edit', 'sm')}</button><button class="btn btn-ghost btn-sm" onclick="hapusKonten('agenda','${a.id}')">${ikon('trash', 'sm')}</button></div></div>`).join('') : kosong('Belum ada agenda.', 'calendar')}</div>`;
   }
 });
 function formAgenda(a = {}) {

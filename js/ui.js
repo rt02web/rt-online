@@ -355,3 +355,41 @@ function grafikDonat(items, tengah, sub) {
   });
   return `<svg class="chart" viewBox="0 0 180 180" style="max-width:200px;margin:0 auto" role="img" aria-label="${esc(sub)}">${g || `<circle cx="${C}" cy="${C}" r="60" fill="none" stroke="#E2E8F0" stroke-width="20"/>`}<text x="90" y="88" text-anchor="middle" style="font-size:24px;font-weight:700;fill:#1A1A2E">${esc(tengah)}</text><text x="90" y="108" text-anchor="middle" style="font-size:10px;letter-spacing:.06em">${esc(sub)}</text></svg>`;
 }
+
+/**
+ * v1.4 — PasAngka: angka/nominal panjang (mis. Rp12.470.000) dikecilkan otomatis agar tetap
+ * SATU baris di kartu angka HP, tidak patah menjadi "Rp12.470." lalu "000" di baris bawah.
+ * Hanya mengubah ukuran huruf tampilan; tidak menyentuh data apa pun.
+ */
+const PasAngka = (() => {
+  const PILIH = '.kpi .val, .fit, .bayar-hero .big';
+  let jadwal = 0;
+  function pas() {
+    jadwal = 0;
+    document.querySelectorAll(PILIH).forEach(el => {
+      if (!el.isConnected || !el.offsetParent) return;
+      const teks = el.textContent, lebar0 = el.parentElement ? el.parentElement.clientWidth : 0;
+      if (el._pasT === teks && el._pasW === lebar0) return; // sudah pas & tidak berubah
+      // elemen + anak yang punya ukuran huruf sendiri (mis. <span style="font-size:22px">) ikut diskalakan
+      const semua = [el].concat(Array.from(el.querySelectorAll('[style*="font-size"]')));
+      semua.forEach(x => { if (x._fs0 === undefined) x._fs0 = x.style.fontSize || ''; x.style.fontSize = x._fs0; });
+      el.classList.remove('val-bungkus');
+      const w = el.clientWidth;
+      if (w && el.scrollWidth > w + 1) {
+        const rasio = w / el.scrollWidth * 0.97;
+        const ukur = semua.map(x => parseFloat(getComputedStyle(x).fontSize) || 20);
+        semua.forEach((x, i) => { x.style.fontSize = Math.max(11, Math.floor(ukur[i] * rasio)) + 'px'; });
+        if (el.scrollWidth > el.clientWidth + 1) el.classList.add('val-bungkus'); // tetap tidak muat → boleh turun baris
+      }
+      el._pasT = teks; el._pasW = lebar0;
+    });
+  }
+  function minta() { if (!jadwal) jadwal = requestAnimationFrame(pas); }
+  if (typeof MutationObserver !== 'undefined') {
+    const mulai = () => { new MutationObserver(minta).observe(document.body, { childList: true, subtree: true, characterData: true }); minta(); };
+    if (document.body) mulai(); else document.addEventListener('DOMContentLoaded', mulai);
+  }
+  addEventListener('resize', minta);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { document.querySelectorAll(PILIH).forEach(el => { el._pasT = null; }); minta(); });
+  return { pas: minta };
+})();

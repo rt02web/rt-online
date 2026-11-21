@@ -9,7 +9,10 @@
  * 3. Percobaan ulang otomatis (maks 2x) bila jaringan putus / server GAS sibuk.
  * 4. Batas waktu 30 detik per permintaan.
  * 5. Data publik lewat GET (sesuai pola gas-pro-api), aksi lain lewat POST text/plain.
- * 6. Setiap penulisan data mengosongkan cache agar tampilan selalu benar.
+ * 6. Setiap penulisan data menandai cache "basi": halaman yang sedang dibuka langsung memuat data
+ *    terbaru, halaman lain tetap tampil instan lalu diperbarui di latar belakang (v1.4).
+ * 7. v1.4: cache disimpan di HP (localStorage, per akun) → membuka aplikasi lagi langsung tampil;
+ *    permintaan kembar yang sedang berjalan digabung; ping penjaga server hanya saat tidak aktif.
  */
 const Sesi = {
   KEY: 'rt_online_sesi',
@@ -32,7 +35,7 @@ const Sesi = {
     ApiCache.kosongkan();
   },
   perbaruiUser(user) { const s = this.get(); if (s) this.simpan(s.token, user); },
-  hapus() { this._c = null; localStorage.removeItem(this.KEY); ApiCache.kosongkan(); }
+  hapus() { ApiCache.kosongkan(); this._c = null; localStorage.removeItem(this.KEY); ApiCache.bersihkanLS(); }
 };
 
 class ApiError extends Error { constructor(msg, kode) { super(msg); this.kode = kode; } }
@@ -43,22 +46,69 @@ function cekKonfigurasi() {
 }
 
 // ---------------- Klasifikasi aksi ----------------
-const AKSI_BACA = /^(list|get|detail|ringkasan|dashboard|riwayat|daftar|publik|laporanKas$|statusFonnte$|pratinjau|ping$)/;
-const AKSI_SEGAR = ['statusFonnte', 'pratinjauTagihan', 'pratinjauNotif', 'pratinjauSurat', 'ping', 'unduhFile'];
+const AKSI_BACA = /^(list|get|detail|ringkasan|dashboard|riwayat|daftar|publik|statistik|cekHapus|laporanKas$|laporanKasPdf$|statusFonnte$|pratinjau|ping$|saya$)/;
+const AKSI_SEGAR = ['statusFonnte', 'pratinjauTagihan', 'pratinjauNotif', 'pratinjauSurat', 'ping', 'unduhFile', 'laporanKasPdf', 'cekHapusRumah', 'listRumahTerhapus', 'saya'];
 const AKSI_GET = ['publikBeranda', 'publikPengumuman', 'publikAgenda', 'publikGaleri', 'publikProfil', 'daftarBlok', 'ping'];
 const isBaca = a => AKSI_BACA.test(a) || a === 'unduhFile';
 const bolehCache = a => isBaca(a) && AKSI_SEGAR.indexOf(a) < 0;
 
 // ---------------- Cache browser ----------------
 const ApiCache = {
-  SEGAR_MS: 30 * 1000,       // < 30 dtk: pakai langsung tanpa ke server
-  BASI_MS: 15 * 60 * 1000,   // < 15 mnt: tampilkan dulu, perbarui di latar belakang
+  SEGAR_MS: 30 * 1000,          // < 30 dtk: pakai langsung tanpa ke server
+  BASI_MS: 15 * 60 * 1000,      // < 15 mnt: tampilkan dulu, perbarui di latar belakang
+  SIMPAN_MS: 12 * 3600 * 1000,  // data tersimpan di HP maks 12 jam (selalu diperbarui saat dibuka)
   m: new Map(),
+  _tulis: 0,                    // waktu penulisan data terakhir dari perangkat ini
   kunci: (a, d) => { const u = Sesi.user; return (u ? u.id : 'publik') + '|' + a + '|' + JSON.stringify(d || {}); },
   ambil(k) { return this.m.get(k); },
-  simpan(k, d) { this.m.set(k, { t: Date.now(), d, s: JSON.stringify(d) }); if (this.m.size > 120) this.m.delete(this.m.keys().next().value); },
-  kosongkan() { this.m.clear(); }
+  /** basi=true → hasil permintaan yang dimulai sebelum ada penulisan: disimpan tetapi tetap diperbarui */
+  simpan(k, d, basi) {
+    this.m.delete(k);
+    this.m.set(k, { t: basi ? Date.now() - this.SEGAR_MS - 1 : Date.now(), d, s: JSON.stringify(d), w: basi ? 1 : 0 });
+    if (this.m.size > 150) this.m.delete(this.m.keys().next().value);
+    this.jadwalSimpan();
+  },
+  /** Setelah penulisan: semua data ditandai basi (tidak dibuang) */
+  basikan() {
+    this._tulis = Date.now();
+    const lama = Date.now() - this.SEGAR_MS - 1;
+    this.m.forEach(v => { v.t = Math.min(v.t, lama); v.w = 1; });
+    this.jadwalSimpan();
+  },
+  kosongkan() { this.m.clear(); clearTimeout(this._ts); try { const k = this.kunciLS(); if (k) localStorage.removeItem(k); } catch (e) { } },
+  kunciLS() { const u = Sesi.user; return u && u.id ? 'rt_online_cache_' + u.id : ''; },
+  jadwalSimpan() { clearTimeout(this._ts); this._ts = setTimeout(() => this.simpanLS(), 1000); },
+  simpanLS() {
+    const kl = this.kunciLS(); if (!kl) return;
+    try {
+      const arr = []; let ukuran = 0;
+      Array.from(this.m.entries()).reverse().forEach(([k, v]) => {
+        if (ukuran > 1500000 || /\|(unduhFile|laporanKasPdf)\|/.test(k)) return;
+        ukuran += v.s.length + k.length; arr.push([k, v.t, v.s]);
+      });
+      localStorage.setItem(kl, JSON.stringify({ v: 1, a: arr }));
+    } catch (e) { /* memori HP penuh → cache tidak disimpan, aplikasi tetap jalan */ }
+  },
+  muatLS() {
+    const kl = this.kunciLS(); if (!kl) return;
+    try {
+      const o = JSON.parse(localStorage.getItem(kl) || 'null');
+      if (!o || o.v !== 1 || !Array.isArray(o.a)) return;
+      const batas = Date.now() - this.SIMPAN_MS, lama = Date.now() - this.SEGAR_MS - 1;
+      o.a.slice().reverse().forEach(([k, t, s]) => { if (t > batas && !this.m.has(k)) this.m.set(k, { t: Math.min(t, lama), d: JSON.parse(s), s, p: 1 }); });
+    } catch (e) { }
+  },
+  /** Hapus cache tersimpan milik sesi lain/kedaluwarsa (privasi di perangkat bersama) */
+  bersihkanLS() {
+    try {
+      const kini = this.kunciLS();
+      Object.keys(localStorage).forEach(k => { if (k.indexOf('rt_online_cache_') === 0 && k !== kini) localStorage.removeItem(k); });
+    } catch (e) { }
+  }
 };
+let _epoch = 0;               // bertambah setiap penulisan → permintaan baca lama tidak dibagi lagi
+const _jalan = new Map();     // permintaan baca yang sedang berjalan (digabung bila kembar)
+let _terakhirKirim = Date.now();
 const salin = d => (d === undefined || d === null) ? d : (typeof structuredClone === 'function' ? structuredClone(d) : JSON.parse(JSON.stringify(d)));
 
 // ---------------- Indikator proses (garis tipis di atas layar) ----------------
@@ -75,6 +125,7 @@ const PESAN_ULANG = /sibuk|too many|invoked too many|timed out|timeout|Exceeded|
 const tidur = ms => new Promise(r => setTimeout(r, ms));
 
 async function http(body, { get, ulang = 0 } = {}) {
+  _terakhirKirim = Date.now();
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), 30000) : null;
   indikator(1);
@@ -170,23 +221,52 @@ async function api(action, data = {}, opsi = {}) {
   if (!cekKonfigurasi()) throw new ApiError('URL backend belum diatur. Isi GAS_URL di js/config.js.', 'KONFIG');
   const baca = isBaca(action);
   if (!baca) {
-    // Aksi tulis: kirim langsung (tanpa percobaan ulang agar tidak tercatat ganda), lalu kosongkan cache
+    // Aksi tulis: kirim langsung (tanpa percobaan ulang agar tidak tercatat ganda).
+    // Sesudahnya cache ditandai basi (bukan dibuang) dan menu utama dimuat ulang di latar belakang.
+    _epoch++;
     try {
       const json = await http({ action, data, token: Sesi.token }, { ulang: 0 });
       if (!json.success) throw olahGagal(json.message);
       return json.data;
-    } finally { ApiCache.kosongkan(); }
+    } finally { _epoch++; ApiCache.basikan(); jadwalMuatUlang(); }
   }
   const k = ApiCache.kunci(action, data);
   if (bolehCache(action) && !opsi.segar) {
     const c = ApiCache.ambil(k);
-    const umur = c ? Date.now() - c.t : Infinity;
-    if (c && umur < ApiCache.SEGAR_MS) return salin(c.d);
-    if (c && umur < ApiCache.BASI_MS) { segarkanLatar(k, action, data); return salin(c.d); }
+    if (c) {
+      const umur = Date.now() - c.t;
+      if (umur < ApiCache.SEGAR_MS) return salin(c.d);
+      // Baru saja ada penyimpanan dari HP ini → tunggu data terbaru agar perubahan langsung terlihat
+      const baruDisimpan = c.w && Date.now() - ApiCache._tulis < 8000;
+      if (!baruDisimpan && (umur < ApiCache.BASI_MS || c.p)) { segarkanLatar(k, action, data); return salin(c.d); }
+    }
   }
-  const d = await kirimBaca(action, data);
-  if (bolehCache(action)) ApiCache.simpan(k, d);
-  return salin(d);
+  return salin(await ambilServer(k, action, data));
+}
+
+/** Ambil dari server; permintaan kembar yang sedang berjalan cukup ditumpangi (tidak dikirim dua kali) */
+function ambilServer(k, action, data) {
+  const kj = _epoch + '|' + k;
+  if (_jalan.has(kj)) return _jalan.get(kj);
+  const e0 = _epoch;
+  const p = kirimBaca(action, data).then(d => {
+    if (bolehCache(action)) ApiCache.simpan(k, d, e0 !== _epoch);
+    return d;
+  });
+  _jalan.set(kj, p);
+  const hapus = () => { _jalan.delete(kj); };
+  p.then(hapus, hapus);
+  return p;
+}
+
+/** Setelah penyimpanan: data menu utama & angka di menu dimuat ulang di latar (digabung, 1 permintaan) */
+let _timerMuatUlang = null;
+function jadwalMuatUlang() {
+  clearTimeout(_timerMuatUlang);
+  _timerMuatUlang = setTimeout(() => {
+    if (!Sesi.user) return;
+    try { if (typeof prefetchPeran === 'function') prefetchPeran(); if (typeof perbaruiHitung === 'function') perbaruiHitung(); } catch (e) { }
+  }, 1500);
 }
 
 /** Perbarui data di latar belakang; bila berubah, gambar ulang halaman secara halus */
@@ -194,9 +274,8 @@ function segarkanLatar(k, action, data) {
   if (_latar.has(k)) return;
   _latar.add(k);
   const hashAwal = location.hash;
-  kirimBaca(action, data).then(d => {
-    const lama = ApiCache.ambil(k);
-    ApiCache.simpan(k, d);
+  const lama = ApiCache.ambil(k);
+  ambilServer(k, action, data).then(d => {
     if (lama && lama.s !== JSON.stringify(d) && location.hash === hashAwal) {
       clearTimeout(_timerSegar);
       _timerSegar = setTimeout(() => {
@@ -212,8 +291,8 @@ function prefetch(daftar) {
   daftar.forEach(([a, d]) => {
     const k = ApiCache.kunci(a, d || {});
     const c = ApiCache.ambil(k);
-    if (c && Date.now() - c.t < ApiCache.BASI_MS) return;
-    kirimBaca(a, d || {}).then(x => ApiCache.simpan(k, x)).catch(() => { });
+    if (c && !c.w && !c.p && Date.now() - c.t < ApiCache.BASI_MS) return;
+    ambilServer(k, a, d || {}).catch(() => { });
   });
 }
 
@@ -224,12 +303,17 @@ async function apiPublik(action, maxAgeMs = 60000) {
   return d;
 }
 
-/** Jaga server GAS tetap "hangat" selama aplikasi terbuka (mengurangi jeda cold start) */
+/** Jaga server GAS tetap "hangat" selama aplikasi terbuka; ping hanya bila ±3,5 menit tidak ada permintaan */
 setInterval(() => {
-  if (document.visibilityState === 'visible' && cekKonfigurasi()) {
+  if (document.visibilityState === 'visible' && cekKonfigurasi() && Date.now() - _terakhirKirim > 210000) {
+    _terakhirKirim = Date.now();
     fetch(RT_CONFIG.GAS_URL + '?action=ping', { redirect: 'follow' }).catch(() => { });
   }
-}, 4 * 60 * 1000);
+}, 60 * 1000);
+
+// Cache tersimpan: muat milik sesi aktif, bersihkan milik sesi lain/kedaluwarsa
+ApiCache.bersihkanLS();
+ApiCache.muatLS();
 
 /** Identitas RT (logo, foto latar, nama) — disimpan agar halaman berikutnya instan */
 const Identitas = {
